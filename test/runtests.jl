@@ -1,6 +1,9 @@
 using GSMAnalytical
 using Test
 
+const G = GSMAnalytical
+
 @testset "GSMAnalytical.jl" begin
-    # Write your own tests here.
+    # it compiles !
+    @test true
 end
