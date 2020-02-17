@@ -1,7 +1,12 @@
 module GSMAnalytical
+
+export rand
+
 using Statistics, LinearAlgebra, StatsBase
+using SpecialFunctions
 using Distributions, Random
 using QuadGK
+
 
 # function tridot(x,M,y)
 #   ret = 0.0
@@ -13,6 +18,8 @@ using QuadGK
 # end
 tridot(x,M,y)=dot(x,M*y)
 
+mat1d(x::Real) = let m = Matrix{Float64}(undef,1,1) ; m[1,1] = x ; m ; end
+
 abstract type MixerType end
 struct RayleighMixer <: MixerType
     alpha
@@ -23,7 +30,7 @@ struct GSM{Mx}
     covariance_noise::AbstractMatrix
     mixer::Mx
 end
-Base.ndims(g::GSM) = size(g.covariance_matrix,1)
+Base.ndims(g::GSM) = size(g.covariance,1)
 
 # for now all functions are defined for GSM{RayleighMixer}
 # _nn = no noise  _wn = with noise
@@ -31,7 +38,7 @@ Base.ndims(g::GSM) = size(g.covariance_matrix,1)
 @inline function hasnoise(gsm::GSM ; tol=1E-3)
     Sn = gsm.covariance_noise
     n=size(Sn,1)
-    return trace(Sn)/n < tol
+    return tr(Sn)/n > tol
 end
 """
         Random.rand(gsm::GSM{RayleighMixer},n::Integer) -> (mixers,gs,xs)
@@ -40,19 +47,19 @@ the latent features, and the xs. If noise is abasent, the x samples are the prod
 the gs with the mixers.
 """
 function Random.rand(gsm::GSM{RayleighMixer},n::Integer)
-  hasnoise(gms) && return _rand_gsmray_nn(gsm,n)
-  return _rand_gsmray_wn(gsm,n)
+  hasnoise(gsm) && return _rand_gsmray_wn(gsm,n)
+  return _rand_gsmray_nn(gsm,n)
 end
 
 function _rand_gsmray_nn(gsm,n)
-  mixers = rand(Raileigh(gsm.mixer.alpha),n)
+  mixers = rand(Rayleigh(gsm.mixer.alpha),n)
   gs = rand( MultivariateNormal(gsm.covariance),n)
-  xs = broadcast(Transpose(mixers),gs)
+  xs = broadcast(*,Transpose(mixers),gs)
   return (mixers,gs,xs)
 end
-function _rang_gsm_wn(gsm,n)
+function _rand_gsmray_wn(gsm,n)
   (mixers,gs,xs) = _rand_gsmray_nn(gsm,n)
-  xs .+= rand(MultivariateNormal(gms.covariance_noise),n)
+  xs .+= rand(MultivariateNormal(gsm.covariance_noise),n)
   return (mixers,gs,xs)
 end
 
@@ -65,7 +72,7 @@ function p_xGnu(x,nu,gsm::GSM)
     return p_xGnu_nn(x,nu,gsm)
 end
 function p_xGnu_nn(x,nu,p::GSM)
-    S=(nu*nu) .* p.covariance
+    S=(nu*nu+eps(100.)) .* p.covariance #numerical stability!
     pdf(MultivariateNormal(S),x)
  end
 function p_xGnu_wn(x,nu,p::GSM)
@@ -75,31 +82,31 @@ end
 
 
 # aux function for the no noise case, analytic
-function psibig(x,n,gsm::GSM{RayleighMixer})
-   α = gms.mixer.alpha
+function psibig(n,x,gsm::GSM{RayleighMixer})
+   α = gsm.mixer.alpha
    λ = lambda(x,gsm)
    nd = ndims(gsm)
    return  (α*λ)^(0.5(2-n)) *
-     besselk( 0.5n-1. , λ/α) /
-     (α*α*sqrt( (2pi)^nd *det(gsm.covariance_matrix)))
+     besselk( 0.5n-1. , (λ+eps(100.))/α ) / #numerical stability...
+     (α*α*sqrt( (2pi)^nd *det(gsm.covariance)))
 end
 # aux function for the case with nise, semi-analytic
 function psibigtilde(k,x,gsm)
   α = gsm.mixer.alpha
-  f_integrate(nu) = (nu^k)*pdf(Raileigh(α),nu)*p_xGnu_wn(x,nu,gsm)
+  f_integrate(nu) = (nu^k)*pdf(Rayleigh(α),nu)*p_xGnu_wn(x,nu,gsm)
   return quadgk(f_integrate,0,Inf)[1]
 end
 
 """
-    function p_x(x::Vector,gsm::GSM)
+    function p_x(x::Vector,gsm::GSM) -> p::Float64
 Probability of input `x` for the gsm model
 """
 function p_x(x::Vector,gsm::GSM{RayleighMixer})
   hasnoise(gsm) && return p_x_wn(x,gsm)
-  return p_x_nn(x,nu,gsm)
+  return p_x_nn(x,gsm)
 end
-p_x_wn(x,gsm) =psibigtilde(0,x,gms)
-p_x_nn(g,gsm) = psibig(x,ndims(gsm),gsm)
+p_x_wn(x,gsm) =psibigtilde(0,x,gsm)
+p_x_nn(x,gsm) = psibig(ndims(gsm),x,gsm)
 ##
 
 
@@ -110,8 +117,8 @@ end
 lambda(x,gsm) = sqrt(lambdasq(x,gsm))
 
 # Auxiliary psi in the free noise case
-function psibig_ratio_nn(x,n1,n2,gsm::GSM{RayleighMixer})
-  α = gms.mixer.alpha
+function psibig_ratio(n1,n2,x,gsm::GSM{RayleighMixer})
+  α = gsm.mixer.alpha
   λ = lambda(x,gsm)
   nd = ndims(gsm)
   bb = λ/α
@@ -135,6 +142,81 @@ function loglik_data(x::AbstractMatrix,gsm::GSM)
     out
 end
 
+## Now the moments of the mixer
+
+"""
+        p_nuGx(nu::Float64,x::Vector,gsm::GSM{RayleighMixer}) -> p::Float64
+Probability curve for the mixer given the stimulus
+"""
+function p_nuGx(nu::Float64,x::Vector,gsm::GSM{RayleighMixer})
+    hasnoise(gsm) && return p_nuGx_wn(nu,x,gsm)
+    return p_nuGx_nn(nu,x,gsm)
+end
+
+function p_nuGx_nn(nu::Float64,x::Vector,gsm::GSM{RayleighMixer})
+  Ψ = psibig(ndims(gsm),x,gsm)
+  α = gsm.mixer.alpha
+  return  p_xGnu_nn(x,nu,gsm) * pdf(Rayleigh(α),nu) / Ψ
+end
+function p_nuGx_wn(nu::Float64,x::Vector,gsm::GSM{RayleighMixer})
+  Ψ = psibigtilde(0,x,gsm)
+  α = gsm.mixer.alpha
+  return p_xGnu_wn(x,nu,gsm) * pdf(Rayleigh(α),nu) / Ψ
+end
+
+# mean and variance !
+"""
+    EnuGx(x::Vector,gsm::GSM{RayleighMixer})
+
+Expectation of the mixer for a given input `x`
+"""
+function EnuGx(x::Vector,gsm::GSM{RayleighMixer})
+    hasnoise(gsm) && return EnuGx_wn(x,gsm)
+    return EnuGx_nn(x,gsm)
+end
+
+function EnuGx_nn(x::Vector,gsm::GSM{RayleighMixer})
+    n = ndims(gsm)
+    nn = n-1
+    return psibig_ratio(n-1,n,x,gsm)
+end
+function EnuGx_wn(x::Vector,gsm::GSM{RayleighMixer})
+    n = ndims(gsm)
+    return psibigtilde(1,x,gsm)/psibigtilde(0,x,gsm)
+end
+
+# """
+#     Var_nuGx(x::Vector,gsm::GSM{RayleighMixer})
+#
+# Variance of the mixer for a given input `x`
+# """
+# function Var_nuGx(x::Vector,gsm::GSM{RayleighMixer})
+#     hasnoise(gsm) && return Var_nuGx_wn(x,gsm)
+#     return Var_nuGx_nn(x,gsm)
+# end
+#
+# function Var_nuGx_nn(x::Vector,gsm::GSM{RayleighMixer})
+#     n = ndims(gsm)
+#     nn = n-1
+#     return psibig_ratio(n-1,n,x,gsm)
+# end
+# function Var_nuGx_wn(x::Vector,gsm::GSM{RayleighMixer})
+#     n = ndims(gsm)
+#     return psibigtilde(1,x,gsm)/psibigtilde(0,x,gsm)
+# end
+#
+    # function p_nuGx(nus::Vector,x,gsm;normalized=true)
+    #     mixer_pdf=get_mixer_pdf(gsm)
+    #     n=ndims(gsm)
+    #     px= normalized ? p_x(x,gsm) : 1.0
+    #     map(nu-> p_xGnu(nu,x,gsm)*mixer_pdf(nu)/px , nus)
+    # end
+    # function p_nuGx(nus::Real,x,gsm;normalized=true)
+    #     p_nuGx([nus],x,gsm;normalized=normalized)[1]
+    # end
+
+    # expect_nu(x,gsm) = psi_ratio(-1,x,gsm)
+    # variance_nu(x,gsm) = psi_ratio(-2,x,gsm)-psi_ratio(-1,x,gsm)^2
 ##################################
 # ### old stuff to update
 #
@@ -200,27 +282,6 @@ end
 #     _tr = tr(_noise)/n
 #     return (_tr > 1E-4)
 # end
-# Base.ndims(gsm::GSM) = size(gsm.covariance_matrix,1)
-#
-#
-# """
-# p_x(x::vector,gsm_model)
-#
-# Prior probability on x
-# """
-# function p_x(x,gsm)
-#     checknoise(gsm) ? _p_x_noise(x,gsm) : _p_x_nonoise(x,gsm)
-# end
-#
-# function _p_x_nonoise(x,gsm)
-#     psi(ndims(gsm),x,gsm)
-# end
-# function _p_x_noise(x,gsm)
-#     mixer_pdf=get_mixer_pdf(gsm)
-#     f_integrate(nu) = mixer_pdf(nu) * p_xGnu(nu,x,gsm)
-#     quadgk(f_integrate,1E-3,10)[1]
-# end
-#
 #
 # """
 # p_xGnu(nu::Float64,x::Vector,gsm_model)
