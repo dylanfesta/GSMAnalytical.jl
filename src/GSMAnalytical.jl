@@ -81,15 +81,34 @@ function p_xGnu_wn(x,nu,p::GSM)
 end
 
 
-# aux function for the no noise case, analytic
-function psibig(n,x,gsm::GSM{RayleighMixer})
+# aux functios for the no noise case, analytic
+function lambdasq(x,gsm)
+    Sg = gsm.covariance
+    return dot(x,Sg\x)
+end
+
+lambda(x,gsm) = sqrt(lambdasq(x,gsm))
+
+function psibig(k,x,gsm::GSM{RayleighMixer})
    α = gsm.mixer.alpha
    λ = lambda(x,gsm)
    nd = ndims(gsm)
-   return  (α*λ)^(0.5(2-n)) *
-     besselk( 0.5n-1. , (λ+eps(100.))/α ) / #numerical stability...
+   nn = 1+0.5(k-nd)
+   return  (α*λ)^nn *
+     besselk( nn , (λ+eps(100.))/α ) / #numerical stability...
      (α*α*sqrt( (2pi)^nd *det(gsm.covariance)))
 end
+
+function psibig_ratio(k1,k2,x,gsm::GSM{RayleighMixer})
+  α = gsm.mixer.alpha
+  λ = lambda(x,gsm)
+  nd = ndims(gsm)
+  bb = (λ+eps(100.0))/α
+  return (α*λ)^(0.5(k1-k2)) *
+    besselk(1+0.5(k1-nd),bb) /
+    besselk(1+0.5(k2-nd),bb)
+end
+
 # aux function for the case with nise, semi-analytic
 function psibigtilde(k,x,gsm)
   α = gsm.mixer.alpha
@@ -97,6 +116,28 @@ function psibigtilde(k,x,gsm)
   return quadgk(f_integrate,0,Inf)[1]
 end
 
+function star_thingies(nu::Float64,x::Vector,gsm::GSM{RayleighMixer})
+    @assert hasnoise(gsm)
+    n = ndims(gsm)
+    Sn_inv = gsm.covariance_noise |> inv
+    Sg_inv = gsm.covariance |> inv
+    return star_thingies(nu,x,Sn_inv,Sg_inv)
+end
+# c3  = exp(0.5*(tridot(mu3,S3_inv,mu3)-tridot(x,Sn_inv,x)) ) /
+#            sqrt(det(Sg_inv)*det(Sn_inv)*det(S3)*(2pi)^n )
+# saves a couple of matrix inversions
+function star_thingies(nu::Float64,x::Vector,Sg_inv,Sn_inv)
+    S3_inv = @. Sg_inv + Sn_inv * (nu*nu)
+    S3 = inv(S3_inv)
+    mu3 = nu .*(S3*(Sn_inv*x))
+    return (mu3,S3)
+end
+
+
+
+
+#########3
+# probabilities and moments etc
 """
     function p_x(x::Vector,gsm::GSM) -> p::Float64
 Probability of input `x` for the gsm model
@@ -106,26 +147,11 @@ function p_x(x::Vector,gsm::GSM{RayleighMixer})
   return p_x_nn(x,gsm)
 end
 p_x_wn(x,gsm) =psibigtilde(0,x,gsm)
-p_x_nn(x,gsm) = psibig(ndims(gsm),x,gsm)
+p_x_nn(x,gsm) = psibig(0,x,gsm)
 ##
 
 
-function lambdasq(x,gsm)
-    Sg = gsm.covariance
-    return dot(x,Sg\x)
-end
-lambda(x,gsm) = sqrt(lambdasq(x,gsm))
 
-# Auxiliary psi in the free noise case
-function psibig_ratio(n1,n2,x,gsm::GSM{RayleighMixer})
-  α = gsm.mixer.alpha
-  λ = lambda(x,gsm)
-  nd = ndims(gsm)
-  bb = λ/α
-  return (α*λ)^(-0.5(n1-n2)) *
-    besselk(0.5*n1-1,bb) /
-    besselk(0.5*n2-2,bb)
-end
 
 """
 Log-likelyhood test of datapoint for a given model.
@@ -154,7 +180,7 @@ function p_nuGx(nu::Float64,x::Vector,gsm::GSM{RayleighMixer})
 end
 
 function p_nuGx_nn(nu::Float64,x::Vector,gsm::GSM{RayleighMixer})
-  Ψ = psibig(ndims(gsm),x,gsm)
+  Ψ = psibig(0,x,gsm)
   α = gsm.mixer.alpha
   return  p_xGnu_nn(x,nu,gsm) * pdf(Rayleigh(α),nu) / Ψ
 end
@@ -164,7 +190,7 @@ function p_nuGx_wn(nu::Float64,x::Vector,gsm::GSM{RayleighMixer})
   return p_xGnu_wn(x,nu,gsm) * pdf(Rayleigh(α),nu) / Ψ
 end
 
-# mean and variance !
+# conditional mean and variance for mixer
 """
     EnuGx(x::Vector,gsm::GSM{RayleighMixer})
 
@@ -178,33 +204,145 @@ end
 function EnuGx_nn(x::Vector,gsm::GSM{RayleighMixer})
     n = ndims(gsm)
     nn = n-1
-    return psibig_ratio(n-1,n,x,gsm)
+    return psibig_ratio(1,0,x,gsm)
 end
 function EnuGx_wn(x::Vector,gsm::GSM{RayleighMixer})
     n = ndims(gsm)
     return psibigtilde(1,x,gsm)/psibigtilde(0,x,gsm)
 end
 
-# """
-#     Var_nuGx(x::Vector,gsm::GSM{RayleighMixer})
-#
-# Variance of the mixer for a given input `x`
-# """
-# function Var_nuGx(x::Vector,gsm::GSM{RayleighMixer})
-#     hasnoise(gsm) && return Var_nuGx_wn(x,gsm)
-#     return Var_nuGx_nn(x,gsm)
-# end
-#
-# function Var_nuGx_nn(x::Vector,gsm::GSM{RayleighMixer})
-#     n = ndims(gsm)
-#     nn = n-1
-#     return psibig_ratio(n-1,n,x,gsm)
-# end
-# function Var_nuGx_wn(x::Vector,gsm::GSM{RayleighMixer})
-#     n = ndims(gsm)
-#     return psibigtilde(1,x,gsm)/psibigtilde(0,x,gsm)
-# end
-#
+"""
+    Var_nuGx(x::Vector,gsm::GSM{RayleighMixer})
+
+Variance of the mixer for a given input `x`
+"""
+function Var_nuGx(x::Vector,gsm::GSM{RayleighMixer})
+    hasnoise(gsm) && return Var_nuGx_wn(x,gsm)
+    return Var_nuGx_nn(x,gsm)
+end
+function Var_nuGx_nn(x::Vector,gsm::GSM{RayleighMixer})
+    n = ndims(gsm)
+    nn = n-1
+    return psibig_ratio(2,0,x,gsm) - (psibig_ratio(1,0,x,gsm))^2
+end
+function Var_nuGx_wn(x::Vector,gsm::GSM{RayleighMixer})
+    n = ndims(gsm)
+    psi0 = psibigtilde(0,x,gsm)
+    psi1 = psibigtilde(1,x,gsm)
+    psi2 = psibigtilde(2,x,gsm)
+    return psi2/psi0 - (psi1/psi0)^2
+end
+
+# now, conditional probability for single feature
+
+"""
+        p_giGx(gi::Float64,i::Integer,x::Vector,gsm::GSM{RayleighMixer}) -> p::Float64
+Probability curve for the `i`th feature (the `ith` component of the full `g`)
+given the input `x`. Usually k=1
+"""
+function p_giGx(gk::Float64,i::Integer,x::Vector,gsm::GSM{RayleighMixer})
+    hasnoise(gsm) && return p_gkGx_wn(gk,i,x,gsm)
+    return p_gkGx_nn(gk,i,x,gsm)
+end
+function p_gkGx_nn(gk,k,x,gsm)
+    n = ndims(gsm)
+    α = gsm.mixer.alpha
+    S = gsm.covariance
+    Ψ = psibig(0,x,gsm)
+    nu = x[k]/gk
+    g = x ./ nu # this replaces gk also
+    return pdf(Rayleigh(α),nu) / ( Ψ * (nu^(n-1)*abs(gk)) ) *
+        pdf(MultivariateNormal(S),g)
+end
+function p_gkGx_wn(gk,k,x,gsm)
+    n = ndims(gsm)
+    α = gsm.mixer.alpha
+    Sg = gsm.covariance
+    Sn = gsm.covariance_noise
+    Sg_inv = inv(Sg)
+    Sn_inv = inv(Sn)
+    Ψ = psibigtilde(0,x,gsm)
+    function f(nu)
+      (mu3,S3) = star_thingies(nu,x,Sg_inv,Sn_inv)
+      sigma3k = sqrt(S3[k,k])
+      return pdf(Rayleigh(α),nu) * pdf(Normal(mu3[k],sigma3k),gk) *
+        p_xGnu_wn(x,nu,gsm)
+    end
+    return quadgk(f,0,Inf)[1] / Ψ
+end
+
+# expectation and variance, still single feature !
+
+"""
+        EgiGx(i::Integer,x::Vector,gsm::GSM{RayleighMixer}) -> mu_gi::Float64
+Expectation for the `i`th feature (the `ith` component of the full `g`)
+given the input `x`. Usually k=1
+"""
+function EgiGx(i::Integer,x::Vector,gsm::GSM{RayleighMixer})
+    hasnoise(gsm) && return EgiGx_wn(i,x,gsm)
+    return EgiGx_nn(i,x,gsm)
+end
+function EgiGx_nn(i,x,gsm)
+    return nothing
+end
+function EgiGx_wn(i,x,gsm)
+    n = ndims(gsm)
+    α = gsm.mixer.alpha
+    Sg = gsm.covariance
+    Sn = gsm.covariance_noise
+    Sg_inv = inv(Sg)
+    Sn_inv = inv(Sn)
+    Ψ = psibigtilde(0,x,gsm)
+    function f(nu)
+      (mu3,S3) = star_thingies(nu,x,Sg_inv,Sn_inv)
+      return pdf(Rayleigh(α),nu) * p_xGnu_wn(x,nu,gsm) * mu3[i]
+    end
+    return quadgk(f,0,Inf)[1] / Ψ
+end
+
+# expectation for g square !
+function Egi_sqGx_wn(i,x,gsm)
+    n = ndims(gsm)
+    α = gsm.mixer.alpha
+    Sg = gsm.covariance
+    Sn = gsm.covariance_noise
+    Sg_inv = inv(Sg)
+    Sn_inv = inv(Sn)
+    Ψ = psibigtilde(0,x,gsm)
+    function f(nu)
+      (mu3,S3) = star_thingies(nu,x,Sg_inv,Sn_inv)
+      return pdf(Rayleigh(α),nu) * p_xGnu_wn(x,nu,gsm) * (mu3[i]^2 + S3[i,i])
+    end
+    return quadgk(f,0,Inf)[1] / Ψ
+end
+
+"""
+        Var_giGx(i::Integer,x::Vector,gsm::GSM{RayleighMixer}) -> mu_gi::Float64
+Variance for the `i`th feature (the `ith` component of the full `g`)
+given the input `x`. Usually k=1
+"""
+function Var_giGx(i::Integer,x::Vector,gsm::GSM{RayleighMixer})
+    hasnoise(gsm) && return Var_giGx_wn(i,x,gsm)
+    return Var_giGx_nn(gk,i,x,gsm)
+end
+function Var_giGx_nn(i,x,gsm)
+    return nothing
+end
+function Var_giGx_wn(i,x,gsm)
+    E = EgiGx_wn(i,x,gsm)
+    Esq = Egi_sqGx_wn(i,x,gsm)
+    return Esq - E^2
+end
+
+# Fano, too !
+function FF_giGx_wn(i,x,gsm)
+    E = EgiGx_wn(i,x,gms)
+    Esq = Egi_sqGx_wn(i,x,gms)
+    return (Esq - E^2)/E
+end
+
+end #module
+
     # function p_nuGx(nus::Vector,x,gsm;normalized=true)
     #     mixer_pdf=get_mixer_pdf(gsm)
     #     n=ndims(gsm)
@@ -431,5 +569,3 @@ end
 #     distr3_11=Normal(mu3[1],sqrt(S3[1,1]))
 #     pdf.(distr3_11,g1)
 # end
-
-end # module
