@@ -384,8 +384,8 @@ function FFgiGx_nn(i,x,gsm)
   return x[i]*(psi2/psi1-psi1)
 end
 function FFgiGx_wn(i,x,gsm)
-    E = EgiGx_wn(i,x,gms)
-    Esq = Egi_sqGx_wn(i,x,gms)
+    E = EgiGx_wn(i,x,gsm)
+    Esq = Egi_sqGx_wn(i,x,gsm)
     return Esq/E - E
 end
 function FFgiGx_nn_happrox(i,x,gsm;oneterm=true)
