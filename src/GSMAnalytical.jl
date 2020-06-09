@@ -109,7 +109,7 @@ function psibig_ratio(k1,k2,x,gsm::GSM{RayleighMixer})
     besselk(1+0.5(k2-nd),bb)
 end
 
-function psibig_ratio_happrox(k,x,gsm::GSM{RayleighMixer},oneterm=true)
+function psibig_ratio_approx(k,x,gsm::GSM{RayleighMixer},oneterm=true)
   α = gsm.mixer.alpha
   λ = lambda(x,gsm)
   n = ndims(gsm)
@@ -213,8 +213,8 @@ function EnuGx_wn(x::Vector,gsm::GSM{RayleighMixer})
     return psibigtilde(1,x,gsm)/psibigtilde(0,x,gsm)
 end
 # high-values approximation
-function EnuGx_nn_happrox(x::Vector,gsm::GSM{RayleighMixer} ; oneterm=true)
-    return psibig_ratio_happrox(1,x,gsm,oneterm)
+function EnuGx_nn_approx(x::Vector,gsm::GSM{RayleighMixer} ; oneterm=true)
+    return psibig_ratio_approx(1,x,gsm,oneterm)
 end
 
 """
@@ -309,8 +309,8 @@ function EgiGx_wn(i,x,gsm)
     return quadgk(f,0,Inf)[1] / Ψ
 end
 
-function EgiGx_nn_happrox(i,x::Vector,gsm::GSM{RayleighMixer} ; oneterm=true)
-    return x[i]*psibig_ratio_happrox(-1,x,gsm,oneterm)
+function EgiGx_nn_approx(i,x::Vector,gsm::GSM{RayleighMixer} ; oneterm=true)
+    return x[i]*psibig_ratio_approx(-1,x,gsm,oneterm)
 end
 # expectation for g square !
 
@@ -332,8 +332,8 @@ function Egi_sqGx_wn(i,x,gsm)
     return quadgk(f,0,Inf)[1] / Ψ
 end
 
-function Egi_sqGx_nn_happrox(i,x::Vector,gsm::GSM{RayleighMixer} ; oneterm=true)
-    return (x[i])^2*psibig_ratio_happrox(-2,x,gsm,oneterm)
+function Egi_sqGx_nn_approx(i,x::Vector,gsm::GSM{RayleighMixer} ; oneterm=true)
+    return (x[i])^2*psibig_ratio_approx(-2,x,gsm,oneterm)
 end
 
 """
@@ -353,18 +353,25 @@ function Var_giGx_wn(i,x,gsm)
     Esq = Egi_sqGx_wn(i,x,gsm; oneterm=false)
     return Esq - E^2
 end
-function Var_giGx_nn_happrox(i,x,gsm::GSM{RayleighMixer})
+function Var_giGx_nn_approx_old(i,x,gsm::GSM{RayleighMixer})
     n = ndims(gsm)
     α = gsm.mixer.alpha
     λ = lambda(x,gsm)
     return  (x[i]/λ)^2 *(4n-n*n-1)/8
-    # E = EgiGx_nn_happrox(i,x,gsm; oneterm=false)
-    # Esq = Egi_sqGx_nn_happrox(i,x,gsm; oneterm=false)
+    # E = EgiGx_nn_approx(i,x,gsm; oneterm=false)
+    # Esq = Egi_sqGx_nn_approx(i,x,gsm; oneterm=false)
     # return Esq - E^2
 end
-function Var_giGx_nn_happrox_bis(i,x,gsm::GSM{RayleighMixer})
-    E = EgiGx_nn_happrox(i,x,gsm; oneterm=false)
-    Esq = Egi_sqGx_nn_happrox(i,x,gsm; oneterm=false)
+function Var_giGx_nn_approx(i,x,gsm::GSM{RayleighMixer})
+    n = ndims(gsm)
+    α = gsm.mixer.alpha
+    λ = lambda(x,gsm)
+    return  0.25*(x[i]/λ)^2
+end
+
+function Var_giGx_nn_approx_bis(i,x,gsm::GSM{RayleighMixer})
+    E = EgiGx_nn_approx(i,x,gsm; oneterm=false)
+    Esq = Egi_sqGx_nn_approx(i,x,gsm; oneterm=false)
     return Esq - E^2
 end
 
@@ -388,9 +395,17 @@ function FFgiGx_wn(i,x,gsm)
     Esq = Egi_sqGx_wn(i,x,gsm)
     return Esq/E - E
 end
-function FFgiGx_nn_happrox(i,x,gsm;oneterm=true)
-  psi1 = psibig_ratio_happrox(-1,x,gsm,oneterm)
-  psi2 = psibig_ratio_happrox(-2,x,gsm,oneterm)
+
+function FFgiGx_nn_approx(i,x,gsm)
+    n = ndims(gsm)
+    α = gsm.mixer.alpha
+    λ = lambda(x,gsm)
+    return  x[i]*sqrt(α)/(4.0*λ*sqrt(λ))
+end
+
+function FFgiGx_nn_approx_alt(i,x,gsm;oneterm=true)
+  psi1 = psibig_ratio_approx(-1,x,gsm,oneterm)
+  psi2 = psibig_ratio_approx(-2,x,gsm,oneterm)
   return x[i]*(psi2/psi1-psi1)
 end
 

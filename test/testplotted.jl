@@ -54,13 +54,13 @@ _ = let x=0.9 ,
 gsm = do_gsm(0.333,0,0.2334)
 
 moment_an(x) = G.EnuGx_nn([x,],gsm)
-moment_happrox(x) = G.EnuGx_nn_happrox([x,],gsm)
-moment_happrox_more(x) =  G.EnuGx_nn_happrox([x,],gsm ; oneterm=false)
+moment_approx(x) = G.EnuGx_nn_approx([x,],gsm)
+moment_approx_more(x) =  G.EnuGx_nn_approx([x,],gsm ; oneterm=false)
 
 xplot = range(0.01,1 ; length=300) |> collect
 
 
-plot(xplot, [moment_an, moment_happrox,moment_happrox_more] ;
+plot(xplot, [moment_an, moment_approx,moment_approx_more] ;
  label=["full" "approx" "approx 2 terms"], legend=:bottom , linewidth=3  )
 
 # repeat for g1
@@ -68,25 +68,36 @@ plot(xplot, [moment_an, moment_happrox,moment_happrox_more] ;
 gsm = do_gsm(0.833,0,1.333)
 
 moment_an(x) = G.EgiGx_nn(1,[x,],gsm)
-moment_happrox(x) = G.EgiGx_nn_happrox(1,[x,],gsm)
-moment_happrox_more(x) =  G.EgiGx_nn_happrox(1,[x,],gsm ; oneterm=false)
+moment_approx(x) = G.EgiGx_nn_approx(1,[x,],gsm)
+moment_approx_more(x) =  G.EgiGx_nn_approx(1,[x,],gsm ; oneterm=false)
 
 xplot = range(0.01,1 ; length=300) |> collect
 
-plot(xplot, [moment_an, moment_happrox,moment_happrox_more] ;
+plot(xplot, [moment_an, moment_approx,moment_approx_more] ;
  label=["full" "approx" "approx 2 terms"], legend=:bottom , linewidth=3  )
 
 # repeat for Variance !
 gsm = do_gsm(0.833,0,1.333)
 variance_an(x) = G.Var_giGx_nn(1,[x,],gsm)
-variance_happrox(x) = G.Var_giGx_nn_happrox(1,[x,],gsm)
+variance_approx(x) = G.Var_giGx_nn_approx(1,[x,],gsm)
 
 xplot = range(0.01,30 ; length=300) |> collect
-plot(xplot, [variance_an, variance_happrox] ;
+
+
+plot(xplot, [variance_an, variance_approx] ;
  label=["full" "approx" ], legend=:bottom , linewidth=3  )
 # in 1D the approx variance does not depend on the
 # input ! D'hu
 
+# last one, fano factor
+
+gsm = do_gsm(0.833,0,1.333)
+ff_an(x) = G.FFgiGx_nn(1,[x,],gsm)
+ff_approx(x) = G.FFgiGx_nn_approx(1,[x,],gsm)
+
+xplot = range(0.01,30 ; length=300) |> collect
+plot(xplot, [ff_an, ff_approx] ;
+ label=["full" "approx" ], legend=:bottom , linewidth=3  )
 ##
 # ok, let's try in 3D
 
@@ -101,35 +112,35 @@ end
 to_vec(x) = [1.1x - 3,sqrt(10x) , log(x)]
 ##
 moment_an(x) = G.EnuGx_nn(to_vec(x),gsm)
-moment_happrox(x) = G.EnuGx_nn_happrox(to_vec(x),gsm ; oneterm=true)
-moment_happrox_more(x) =  G.EnuGx_nn_happrox(to_vec(x),gsm ; oneterm=false)
+moment_approx(x) = G.EnuGx_nn_approx(to_vec(x),gsm ; oneterm=true)
+moment_approx_more(x) =  G.EnuGx_nn_approx(to_vec(x),gsm ; oneterm=false)
 
 xplot = range(0.01,20 ; length=300) |> collect
 
-plot(xplot, [moment_an, moment_happrox,moment_happrox_more] ;
+plot(xplot, [moment_an, moment_approx,moment_approx_more] ;
   label=["full" "approx" "approx 2 terms"],
   legend=:bottom , linewidth=3, linestyle=[:solid :dash :dot]  )
 
 ##
 moment_an(x) = G.EgiGx_nn(1,to_vec(x),gsm)
-moment_happrox(x) = G.EgiGx_nn_happrox(1,to_vec(x),gsm)
-moment_happrox_more(x) =  G.EgiGx_nn_happrox(1,to_vec(x),gsm ; oneterm=false)
+moment_approx(x) = G.EgiGx_nn_approx(1,to_vec(x),gsm)
+moment_approx_more(x) =  G.EgiGx_nn_approx(1,to_vec(x),gsm ; oneterm=false)
 
 xplot = range(0.01,20 ; length=300) |> collect
 
-plot(xplot, [moment_an, moment_happrox,moment_happrox_more] ;
+plot(xplot, [moment_an, moment_approx,moment_approx_more] ;
    label=["full" "approx" "approx 2 terms"],
    legend=:bottom , linewidth=3, linestyle=[:solid :dash :dot]  )
 
 ## squared
 
 moment_an(x) = G.Egi_sqGx_nn(2,to_vec(x),gsm)
-moment_happrox(x) = G.Egi_sqGx_nn_happrox(2,to_vec(x),gsm)
-moment_happrox_more(x) =  G.Egi_sqGx_nn_happrox(2,to_vec(x),gsm ; oneterm=false)
+moment_approx(x) = G.Egi_sqGx_nn_approx(2,to_vec(x),gsm)
+moment_approx_more(x) =  G.Egi_sqGx_nn_approx(2,to_vec(x),gsm ; oneterm=false)
 
 xplot = range(0.01,100 ; length=300) |> collect
 
-plot(xplot, [moment_an, moment_happrox,moment_happrox_more] ;
+plot(xplot, [moment_an, moment_approx,moment_approx_more] ;
    label=["full" "approx" "approx 2 terms"],
    legend=:bottom , linewidth=3, linestyle=[:solid :dash :dot]  )
 
@@ -138,13 +149,25 @@ plot(xplot, [moment_an, moment_happrox,moment_happrox_more] ;
 ## variance
 itest=1
 variance_an(x) = G.Var_giGx_nn(itest,to_vec(x),gsm)
-variance_happrox(x) = G.Var_giGx_nn_happrox(itest,to_vec(x),gsm)
-variance_happrox2(x) = G.Var_giGx_nn_happrox_bis(itest,to_vec(x),gsm)
+variance_approx(x) = G.Var_giGx_nn_approx(itest,to_vec(x),gsm)
+variance_approx2(x) = G.Var_giGx_nn_approx_old(itest,to_vec(x),gsm)
 
 xplot = range(0.01,100 ; length=300) |> collect
-plot(xplot, [variance_an, variance_happrox, variance_happrox2] ;
+plot(xplot, [variance_an, variance_approx, variance_approx2] ;
     label=["full" "approx" "also approx" ],
     legend=:bottom , linewidth=3, linestyle=[:solid :dash :dot]  )
+
+## FF
+
+itest=2
+ff_an(x) = G.FFgiGx_nn(itest,to_vec(x),gsm)
+ff_approx(x) = G.FFgiGx_nn_approx(itest,to_vec(x),gsm)
+
+xplot = range(0.01,100 ; length=300) |> collect
+plot(xplot, [ff_an, ff_approx] ;
+    label=["full" "approx" ],
+    legend=:bottom , linewidth=3, linestyle=[:solid :dash]  )
+
 
 ## what about 5 D ?
 
@@ -160,22 +183,22 @@ to_vec(x) = [1.1x - 3,sqrt(10x) , log(x), log(x) , log(x)]
 itest=1
 
 moment_an(x) = G.Egi_sqGx_nn(itest,to_vec(x),gsm)
-moment_happrox(x) = G.Egi_sqGx_nn_happrox(itest,to_vec(x),gsm)
-moment_happrox_more(x) =  G.Egi_sqGx_nn_happrox(itest,to_vec(x),gsm ; oneterm=false)
+moment_approx(x) = G.Egi_sqGx_nn_approx(itest,to_vec(x),gsm)
+moment_approx_more(x) =  G.Egi_sqGx_nn_approx(itest,to_vec(x),gsm ; oneterm=false)
 
 xplot = range(0.01,100 ; length=300) |> collect
 
-plot(xplot, [moment_an, moment_happrox,moment_happrox_more] ;
+plot(xplot, [moment_an, moment_approx,moment_approx_more] ;
    label=["full" "approx" "approx 2 terms"],
    legend=:bottom , linewidth=3, linestyle=[:solid :dash :dot]  )
 
 ##
 
 variance_an(x) = G.Var_giGx_nn(2,to_vec(x),gsm)
-variance_happrox(x) = G.Var_giGx_nn_happrox(2,to_vec(x),gsm)
-variance_happrox2(x) = G.Var_giGx_nn_happrox_bis(2,to_vec(x),gsm)
+variance_approx(x) = G.Var_giGx_nn_approx(2,to_vec(x),gsm)
+variance_approx2(x) = G.Var_giGx_nn_approx_bis(2,to_vec(x),gsm)
 
 xplot = range(0.01,100 ; length=300) |> collect
-plot(xplot, [variance_an, variance_happrox, variance_happrox2] ;
+plot(xplot, [variance_an, variance_approx, variance_approx2] ;
     label=["full" "approx" "also approx" ],
     legend=:bottom , linewidth=3, linestyle=[:solid :dash :dot]  )
