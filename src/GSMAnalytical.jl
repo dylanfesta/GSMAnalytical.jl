@@ -30,8 +30,8 @@ struct GSM{Mx}
     covariance_noise::AbstractMatrix
     mixer::Mx
 end
+Base.Broadcast.broadcastable(gsm::GSM) = Ref(GSM)
 Base.ndims(g::GSM) = size(g.covariance,1)
-
 # for now all functions are defined for GSM{RayleighMixer}
 # _nn = no noise  _wn = with noise
 
@@ -146,10 +146,10 @@ end
 #########
 # probabilities and moments etc
 """
-    function p_x(x::Vector,gsm::GSM) -> p::Float64
+    function p_x(x::AbstractVector,gsm::GSM) -> p::Float64
 Probability of input `x` for the gsm model
 """
-function p_x(x::Vector,gsm::GSM{RayleighMixer})
+function p_x(x::AbstractVector,gsm::GSM{RayleighMixer})
   hasnoise(gsm) && return p_x_wn(x,gsm)
   return p_x_nn(x,gsm)
 end
@@ -349,8 +349,8 @@ function Var_giGx_nn(i,x,gsm)
     return  (x[i]^2)*(psibig_ratio(-2,0,x,gsm)-psibig_ratio(-1,0,x,gsm)^2)
 end
 function Var_giGx_wn(i,x,gsm)
-    E = EgiGx_wn(i,x,gsm; oneterm=false)
-    Esq = Egi_sqGx_wn(i,x,gsm; oneterm=false)
+    E = EgiGx_wn(i,x,gsm)
+    Esq = Egi_sqGx_wn(i,x,gsm)
     return Esq - E^2
 end
 function Var_giGx_nn_approx_old(i,x,gsm::GSM{RayleighMixer})
