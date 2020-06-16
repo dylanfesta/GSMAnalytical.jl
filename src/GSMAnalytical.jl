@@ -24,16 +24,37 @@ abstract type MixerType end
 struct RayleighMixer <: MixerType
     alpha
 end
+struct LogNormalMixer <: MixerType
+    μ
+    σ
+end
+
+
+function fun_p_nu(mx::RayleighMixer)
+    distr = Rayleigh(mx.α)
+    function ret(x::R) where R<:Real
+        pdf(distr,x)
+    end
+    return ret
+end
+function fun_p_nu(mx::LogNormalMixer)
+    distr = LogNormal(mx.μ,mx.σ)
+    function ret(x::R) where R<:Real
+        pdf(distr,x)
+    end
+    return ret
+end
 
 struct GSM{Mx}
     covariance::AbstractMatrix
     covariance_noise::AbstractMatrix
     mixer::Mx
 end
-Base.Broadcast.broadcastable(gsm::GSM) = Ref(GSM)
+Base.Broadcast.broadcastable(gsm::GSM) = Ref(gsm)
 Base.ndims(g::GSM) = size(g.covariance,1)
 # for now all functions are defined for GSM{RayleighMixer}
 # _nn = no noise  _wn = with noise
+fun_p_nu(gsm::GSM) = fun_p_nu(gsm.mixer)
 
 @inline function hasnoise(gsm::GSM ; tol=1E-3)
     Sn = gsm.covariance_noise
@@ -125,15 +146,14 @@ function psibigtilde(k,x,gsm)
   return quadgk(f_integrate,0,Inf)[1]
 end
 
-function star_thingies(nu::Float64,x::Vector,gsm::GSM{RayleighMixer})
+function star_thingies(nu::Float64,x::Vector,gsm::GSM)
     @assert hasnoise(gsm)
     n = ndims(gsm)
     Sn_inv = gsm.covariance_noise |> inv
     Sg_inv = gsm.covariance |> inv
-    return star_thingies(nu,x,Sn_inv,Sg_inv)
+    return star_thingies(nu,x,Sg_inv,Sn_inv)
 end
-# c3  = exp(0.5*(tridot(mu3,S3_inv,mu3)-tridot(x,Sn_inv,x)) ) /
-#            sqrt(det(Sg_inv)*det(Sn_inv)*det(S3)*(2pi)^n )
+
 # saves a couple of matrix inversions
 function star_thingies(nu::Float64,x::Vector,Sg_inv,Sn_inv)
     S3_inv = @. Sg_inv + Sn_inv * (nu*nu)
@@ -155,7 +175,39 @@ function p_x(x::AbstractVector,gsm::GSM{RayleighMixer})
 end
 p_x_wn(x,gsm) =psibigtilde(0,x,gsm)
 p_x_nn(x,gsm) = psibig(0,x,gsm)
+
+function p_x(x::AbstractVector,gsm::GSM{LogNormalMixer})
+    p_nu = fun_p_nu(gsm.mixer)
+    f_integrate(nu) = p_nu(nu)*p_xGnu(x,nu,gsm)
+    return quadgk(f_integrate,0,Inf)[1]
+end
+
 ##
+
+function p_x_idx(x,idxs,gsm)
+    hasnoise(gsm) && return p_x_idx_wn(x,idxs,gsm)
+    return p_x_idx_nn(x,idxs,gsm)
+end
+function p_x_idx_nn(x,idxs,gsm)
+    @assert length(idxs) == 1 "sorry, size too large!"
+    function f_integrate(xi)
+        n=ndims(gsm)
+        xfull = fill(xi,n)
+        xfull[idxs] = x
+        return p_x_nn(xfull,gsm)
+    end
+    return quadgk(f_integrate,-Inf,Inf)[1]
+end
+function p_x_idx_wn(x,idxs,gsm)
+    function p_xGnu_wn_idx(x,nu,p::GSM,idx)
+        S= @. (nu*nu)*p.covariance + p.covariance_noise
+        Sless=S[idx,idx]
+        pdf(MultivariateNormal(Sless),x)
+    end
+    α = gsm.mixer.alpha
+    f_integrate(nu) = pdf(Rayleigh(α),nu)*p_xGnu_wn_idx(x,nu,gsm,idxs)
+    return quadgk(f_integrate,0,Inf)[1]
+end
 
 
 """
@@ -408,6 +460,87 @@ function FFgiGx_nn_approx_alt(i,x,gsm;oneterm=true)
   psi2 = psibig_ratio_approx(-2,x,gsm,oneterm)
   return x[i]*(psi2/psi1-psi1)
 end
+
+
+# Now the same, but for multiple elements of g.
+# must be the case with noise only
+
+"""
+    p_gGx(g::Vector,idxs::Vector,x::Vector,gsm::GSM{RayleighMixer})
+
+"""
+function p_gGx(g::Vector,idxs::Vector,x::Vector,gsm::GSM{RayleighMixer})
+   @assert hasnoise(gsm)
+   @assert length(g) == length(idxs)
+   n = ndims(gsm)
+   α = gsm.mixer.alpha
+   Sg = gsm.covariance
+   Sn = gsm.covariance_noise
+   Sg_inv = inv(Sg)
+   Sn_inv = inv(Sn)
+   Ψ = psibigtilde(0,x,gsm)
+   function f(nu)
+     (mu3,S3) = star_thingies(nu,x,Sg_inv,Sn_inv)
+     mu3less = mu3[idxs]
+     S3less = S3[idxs,idxs]
+     multnorm = MultivariateNormal(mu3less,S3less)
+     return pdf(Rayleigh(α),nu) * pdf(multnorm,g) *
+       p_xGnu_wn(x,nu,gsm)
+   end
+   return quadgk(f,0,Inf)[1] / Ψ
+end
+
+"""
+        EgiGx(i::Integer,x::Vector,gsm::GSM{RayleighMixer}) -> mu_gi::Float64
+Expectation for the `i`th feature (the `ith` component of the full `g`)
+given the input `x`. Usually k=1
+"""
+function EgGx(idxs::Vector,x::Vector,gsm::GSM{RayleighMixer})
+    @assert hasnoise(gsm)
+    n = ndims(gsm)
+    α = gsm.mixer.alpha
+    Sg = gsm.covariance
+    Sn = gsm.covariance_noise
+    Sg_inv = inv(Sg)
+    Sn_inv = inv(Sn)
+    Ψ = psibigtilde(0,x,gsm)
+    return map(idxs) do idx
+        function f(nu)
+            (mu3,_) = star_thingies(nu,x,Sg_inv,Sn_inv)
+            return pdf(Rayleigh(α),nu) * p_xGnu_wn(x,nu,gsm) * mu3[idx]
+        end
+        return quadgk(f,0,Inf)[1] / Ψ
+    end
+end
+
+function EgigjGx(idx_i::Integer,idx_j::Integer,x::Vector,gsm::GSM{RayleighMixer})
+    @assert hasnoise(gsm)
+    n = ndims(gsm)
+    α = gsm.mixer.alpha
+    Sg = gsm.covariance
+    Sn = gsm.covariance_noise
+    Sg_inv = inv(Sg)
+    Sn_inv = inv(Sn)
+    Ψ = psibigtilde(0,x,gsm)
+    function f(nu)
+        (mu3,S3) = star_thingies(nu,x,Sg_inv,Sn_inv)
+        factor_ij = S3[idx_i,idx_j] + (mu3[idx_i]*mu3[idx_j])
+        return pdf(Rayleigh(α),nu) * p_xGnu_wn(x,nu,gsm) * factor_ij
+    end
+    return quadgk(f,0,Inf)[1] / Ψ
+end
+
+function Pearson_gigjGx(idx_i::Integer,idx_j::Integer,x::Vector,gsm::GSM{RayleighMixer})
+    @assert hasnoise(gsm)
+    Egi,Egj = EgGx([idx_i,idx_j],x,gsm)
+    EgijGx = EgigjGx(idx_i,idx_j,x,gsm)
+    vgi = Var_giGx(idx_i,x,gsm)
+    vgj = Var_giGx(idx_j,x,gsm)
+    return (EgijGx - Egi*Egj)/sqrt(vgi*vgj)
+end
+
+# lognormal... work in progress, really
+
 
 end #module
 
