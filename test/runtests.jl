@@ -7,6 +7,7 @@ using QuadGK
 const G = GSMAnalytical
 
 mat1d = G.mat1d
+Random.seed!(0)
 
 @testset "1D - without noise" begin
     var = 0.1+rand()
