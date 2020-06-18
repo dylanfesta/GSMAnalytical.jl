@@ -29,7 +29,6 @@ struct LogNormalMixer <: MixerType
     σ
 end
 
-
 function fun_p_nu(mx::RayleighMixer)
     distr = Rayleigh(mx.α)
     function ret(x::R) where R<:Real
@@ -146,16 +145,16 @@ function psibigtilde(k,x,gsm)
   return quadgk(f_integrate,0,Inf)[1]
 end
 
-function star_thingies(nu::Float64,x::Vector,gsm::GSM)
+function meancovar_p_gGxnu(nu::Float64,x::Vector,gsm::GSM)
     @assert hasnoise(gsm)
     n = ndims(gsm)
     Sn_inv = gsm.covariance_noise |> inv
     Sg_inv = gsm.covariance |> inv
-    return star_thingies(nu,x,Sg_inv,Sn_inv)
+    return meancovar_p_gGxnu(nu,x,Sg_inv,Sn_inv)
 end
 
 # saves a couple of matrix inversions
-function star_thingies(nu::Float64,x::Vector,Sg_inv,Sn_inv)
+function meancovar_p_gGxnu(nu::Float64,x::Vector,Sg_inv,Sn_inv)
     S3_inv = @. Sg_inv + Sn_inv * (nu*nu)
     S3 = inv(S3_inv)
     mu3 = nu .*(S3*(Sn_inv*x))
@@ -321,7 +320,7 @@ function p_gkGx_wn(gk,k,x,gsm)
     Sn_inv = inv(Sn)
     Ψ = psibigtilde(0,x,gsm)
     function f(nu)
-      (mu3,S3) = star_thingies(nu,x,Sg_inv,Sn_inv)
+      (mu3,S3) = meancovar_p_gGxnu(nu,x,Sg_inv,Sn_inv)
       sigma3k = sqrt(S3[k,k])
       return pdf(Rayleigh(α),nu) * pdf(Normal(mu3[k],sigma3k),gk) *
         p_xGnu_wn(x,nu,gsm)
@@ -355,7 +354,7 @@ function EgiGx_wn(i,x,gsm)
     Sn_inv = inv(Sn)
     Ψ = psibigtilde(0,x,gsm)
     function f(nu)
-      (mu3,S3) = star_thingies(nu,x,Sg_inv,Sn_inv)
+      (mu3,S3) = meancovar_p_gGxnu(nu,x,Sg_inv,Sn_inv)
       return pdf(Rayleigh(α),nu) * p_xGnu_wn(x,nu,gsm) * mu3[i]
     end
     return quadgk(f,0,Inf)[1] / Ψ
@@ -378,7 +377,7 @@ function Egi_sqGx_wn(i,x,gsm)
     Sn_inv = inv(Sn)
     Ψ = psibigtilde(0,x,gsm)
     function f(nu)
-      (mu3,S3) = star_thingies(nu,x,Sg_inv,Sn_inv)
+      (mu3,S3) = meancovar_p_gGxnu(nu,x,Sg_inv,Sn_inv)
       return pdf(Rayleigh(α),nu) * p_xGnu_wn(x,nu,gsm) * (mu3[i]^2 + S3[i,i])
     end
     return quadgk(f,0,Inf)[1] / Ψ
@@ -480,7 +479,7 @@ function p_gGx(g::Vector,idxs::Vector,x::Vector,gsm::GSM{RayleighMixer})
    Sn_inv = inv(Sn)
    Ψ = psibigtilde(0,x,gsm)
    function f(nu)
-     (mu3,S3) = star_thingies(nu,x,Sg_inv,Sn_inv)
+     (mu3,S3) = meancovar_p_gGxnu(nu,x,Sg_inv,Sn_inv)
      mu3less = mu3[idxs]
      S3less = S3[idxs,idxs]
      multnorm = MultivariateNormal(mu3less,S3less)
@@ -506,7 +505,7 @@ function EgGx(idxs::Vector,x::Vector,gsm::GSM{RayleighMixer})
     Ψ = psibigtilde(0,x,gsm)
     return map(idxs) do idx
         function f(nu)
-            (mu3,_) = star_thingies(nu,x,Sg_inv,Sn_inv)
+            (mu3,_) = meancovar_p_gGxnu(nu,x,Sg_inv,Sn_inv)
             return pdf(Rayleigh(α),nu) * p_xGnu_wn(x,nu,gsm) * mu3[idx]
         end
         return quadgk(f,0,Inf)[1] / Ψ
@@ -523,7 +522,7 @@ function EgigjGx(idx_i::Integer,idx_j::Integer,x::Vector,gsm::GSM{RayleighMixer}
     Sn_inv = inv(Sn)
     Ψ = psibigtilde(0,x,gsm)
     function f(nu)
-        (mu3,S3) = star_thingies(nu,x,Sg_inv,Sn_inv)
+        (mu3,S3) = meancovar_p_gGxnu(nu,x,Sg_inv,Sn_inv)
         factor_ij = S3[idx_i,idx_j] + (mu3[idx_i]*mu3[idx_j])
         return pdf(Rayleigh(α),nu) * p_xGnu_wn(x,nu,gsm) * factor_ij
     end
@@ -538,9 +537,6 @@ function Pearson_gigjGx(idx_i::Integer,idx_j::Integer,x::Vector,gsm::GSM{Rayleig
     vgj = Var_giGx(idx_j,x,gsm)
     return (EgijGx - Egi*Egj)/sqrt(vgi*vgj)
 end
-
-# lognormal... work in progress, really
-
 
 end #module
 
