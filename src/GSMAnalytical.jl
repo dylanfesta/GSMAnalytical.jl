@@ -20,11 +20,11 @@ tridot(x,M,y)=dot(x,M*y)
 
 mat1d(x::Real) = let m = Matrix{Float64}(undef,1,1) ; m[1,1] = x ; m ; end
 
-abstract type MixerType end
-struct RayleighMixer <: MixerType
+abstract type GSMMixer end
+struct RayleighMixer <: GSMMixer
     alpha
 end
-struct LogNormalMixer <: MixerType
+struct LogNormalMixer <: GSMMixer
     μ
     σ
 end
@@ -537,6 +537,59 @@ function Pearson_gigjGx(idx_i::Integer,idx_j::Integer,x::Vector,gsm::GSM{Rayleig
     vgj = Var_giGx(idx_j,x,gsm)
     return (EgijGx - Egi*Egj)/sqrt(vgi*vgj)
 end
+
+"""
+        fit_gsm_simple(xs::AbstractMatrix,cov_noise::AbstractMatrix,mixer::GSMMixer)
+
+Fits a gsm model with known mixer distrbution and noise covariance, for a given
+set of obsered outputs.
+
+# Arguments
++ xs : Matrix where columns are observations, and rows are dimensions.
++ cov_noise
++ mixer::GSMMixer : the mixer of the GSM , for example `RayleighMixer(1.0)`
+
+# Output
++ gsm::GSMModel : the gsm fit on data
+"""
+function fit_gsm_simple(xs::AbstractMatrix,cov_noise::AbstractMatrix,mixer::GSMMixer)
+    n,nsampl = size(xs)
+    @assert size(cov_noise,1) == n "wrong dimensions"
+    mixer_snd = second_moment(mixer)
+    Σx = cov(data;dims=2)
+    Σg = Σx ./ mixer_snd - cov_noise
+    TODO TODO TODO
+
+
+
+
+    """
+        get_covariance_g(Sx,mixer::RayleighMixer)
+
+    Covariance matrix for GSM with Rayleigh mixer with moment matching.
+    Assumes that the provided data is noise-free.
+    """
+    function get_covariance_g(Sx,mixer::RayleighMixer)
+        return Sx ./ (2.0mixer.alpha*mixer.alpha)
+    end
+
+
+    struct GSM{Mx}
+        covariance_matrix::AbstractMatrix
+        covariance_matrix_noise::AbstractMatrix
+        mixer::Mx
+    end
+    n_dims(g::GSM) = size(g.covariance_matrix,1)
+
+    function GSM_from_data(data,
+        covariance_matrix_noise::AbstractMatrix,
+        mixer::MixerType)
+      Sigma_x = cov(data;dims=2)
+      Sigma_g = get_covariance_g(Sigma_x,covariance_matrix_noise,mixer)
+      @assert isposdef(Sigma_g) "not positive definite! (too much noise?)"
+      return GSM(Sigma_g,covariance_matrix_noise,mixer)
+    end
+
 
 end #module
 
