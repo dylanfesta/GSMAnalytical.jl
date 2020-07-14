@@ -36,6 +36,15 @@ function fun_p_nu(mx::RayleighMixer)
     end
     return ret
 end
+function fun_log_p_nu(mx::RayleighMixer)
+    distr = Rayleigh(mx.α)
+    function ret(x::R) where R<:Real
+        logpdf(distr,x)
+    end
+    return ret
+end
+
+
 function fun_p_nu(mx::LogNormalMixer)
     distr = LogNormal(mx.μ,mx.σ)
     function ret(x::R) where R<:Real
@@ -43,6 +52,7 @@ function fun_p_nu(mx::LogNormalMixer)
     end
     return ret
 end
+
 
 struct GSM{Mx}
     covariance::AbstractMatrix
@@ -539,56 +549,65 @@ function Pearson_gigjGx(idx_i::Integer,idx_j::Integer,x::Vector,gsm::GSM{Rayleig
 end
 
 """
-        fit_gsm_simple(xs::AbstractMatrix,cov_noise::AbstractMatrix,mixer::GSMMixer)
+    function fit_gsm(xs::AbstractMatrix,mixer::GSMMixer)
 
-Fits a gsm model with known mixer distrbution and noise covariance, for a given
-set of obsered outputs.
+Fits a GSM model with known mixer distrbution and no noise.
 
 # Arguments
 + xs : Matrix where columns are observations, and rows are dimensions.
-+ cov_noise
 + mixer::GSMMixer : the mixer of the GSM , for example `RayleighMixer(1.0)`
 
 # Output
 + gsm::GSMModel : the gsm fit on data
 """
-function fit_gsm_simple(xs::AbstractMatrix,cov_noise::AbstractMatrix,mixer::GSMMixer)
-    n,nsampl = size(xs)
-    @assert size(cov_noise,1) == n "wrong dimensions"
+function fit_gsm(xs::AbstractMatrix,mixer::GSMMixer)
     mixer_snd = second_moment(mixer)
-    Σx = cov(data;dims=2)
-    Σg = Σx ./ mixer_snd - cov_noise
-    TODO TODO TODO
+    Σx = cov(xs;dims=2)
+    Σg = Σx ./ mixer_snd
+    Σnoise = zeros(Σg)
+    return GSM(Σg,Σnoise,mixer)
+end
 
+# Mixer normalization factor for Rayleigh
+function second_moment(mixer::RayleighMixer)
+    return (2.0mixer.alpha*mixer.alpha)
+end
 
-
-
-    """
-        get_covariance_g(Sx,mixer::RayleighMixer)
-
-    Covariance matrix for GSM with Rayleigh mixer with moment matching.
-    Assumes that the provided data is noise-free.
-    """
-    function get_covariance_g(Sx,mixer::RayleighMixer)
-        return Sx ./ (2.0mixer.alpha*mixer.alpha)
+function fit_gsm_addnoise!(gsm::GSM,noise_scal::Real,
+                xs_noise::AbstractMatrix;correct_Sg=false)
+    Σnoise = cov(xs_noise;dims=2)
+    Σnoise ./=  noise_scal*tr(gsm.covariance)/tr(Σnoise)
+    gsm.covariance_noise .= Σnoise
+    if correct_Sg
+        mixer_snd = second_moment(gsm.mixer)
+        @. gsm.covariance -= Σnoise /mixer_snd
+        @assert isposdef(gsm.covariace) "could not correct GSM variance to account for the noise... not enough noise in train data? Reduce noise scaling or add noise to gsm training inputs!"
     end
+    return nothing
+end
 
+# Laplace approximation !
 
-    struct GSM{Mx}
-        covariance_matrix::AbstractMatrix
-        covariance_matrix_noise::AbstractMatrix
-        mixer::Mx
+# find most likely mixer
+
+function mle_nuGx(x::AbstractVector,gsm::GSM)
+    log_p_nu = fun_log_p_nu(gsm)
+    function log_p_xGnu(nu::Real)
+        distr = MultivariateNormal(@. gsm.covariance .+ nu*nu*gsm.covariance_noise)
+        return logpdf(distr,x)
     end
-    n_dims(g::GSM) = size(g.covariance_matrix,1)
+    objfun(nu::Real) = - (log_p_nu(nu) + log_p_xGnu(nu))
+    res=optimize(objfun, 1E-6,100.)
+    return Optim.minimizer(res)
+end
 
-    function GSM_from_data(data,
-        covariance_matrix_noise::AbstractMatrix,
-        mixer::MixerType)
-      Sigma_x = cov(data;dims=2)
-      Sigma_g = get_covariance_g(Sigma_x,covariance_matrix_noise,mixer)
-      @assert isposdef(Sigma_g) "not positive definite! (too much noise?)"
-      return GSM(Sigma_g,covariance_matrix_noise,mixer)
-    end
+function laplace_samples_p_gGx(nsampl::Integer,
+            x::AbstractVector,gsm::GSM)
+    nu_tilde = mle_nuGx(x,gsm)
+    mu3,S3=meancovar_p_gGxnu(nu_tilde,x,gsm)
+    distr=MultivariateNormal(mu3,S3)
+    return rand(distr,nsampl)
+end
 
 
 end #module
