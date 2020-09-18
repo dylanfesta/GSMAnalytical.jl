@@ -60,6 +60,7 @@ struct GSM{Mx}
     mixer::Mx
 end
 Base.Broadcast.broadcastable(gsm::GSM) = Ref(gsm)
+Base.copy(gsm::GSM) = GSM(copy(gsm.covariance),copy(gsm.covariance_noise),gsm.mixer)
 Base.ndims(g::GSM) = size(g.covariance,1)
 # for now all functions are defined for GSM{RayleighMixer}
 # _nn = no noise  _wn = with noise
@@ -97,15 +98,15 @@ end
         p_xGnu(x,nu,gsm::GSM) -> p::Float64
 Probability of input `x` given the mixer `nu`
 """
-function p_xGnu(x,nu,gsm::GSM)
+function p_xGnu(x::AbstractVector{<:Real},nu::Real,gsm::GSM)
     hasnoise(gsm) && return p_xGnu_wn(x,nu,gsm)
     return p_xGnu_nn(x,nu,gsm)
 end
-function p_xGnu_nn(x,nu,p::GSM)
+function p_xGnu_nn(x::AbstractVector{<:Real},nu::Real,p::GSM)
     S=(nu*nu+eps(100.)) .* p.covariance #numerical stability!
     pdf(MultivariateNormal(S),x)
  end
-function p_xGnu_wn(x,nu,p::GSM)
+function p_xGnu_wn(x::AbstractVector{<:Real},nu::Real,p::GSM)
     S= @. (nu*nu)*p.covariance + p.covariance_noise
     pdf(MultivariateNormal(S),x)
 end
