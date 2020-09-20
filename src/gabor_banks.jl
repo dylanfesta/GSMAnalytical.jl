@@ -41,7 +41,7 @@ Returns a 2 Dimensional Complex Gabor kernel contained in a tuple where
 N. Petkov and P. Kruizinga, “Computational models of visual neurons specialised in the detection of periodic and aperiodic oriented visual stimuli: bar and grating cells,” Biological Cybernetics, vol. 76, no. 2, pp. 83–96, Feb. 1997. doi.org/10.1007/s004220050323
 """
 function gabor(size_x::Integer, size_y::Integer, σ::Real, θ::Real, λ::Real, γ::Real, ψ::Real)
-    @assert (size_x>0) && (size_y > 0) && all( [σ,θ,λ,γ,ψ] .>= 0) "Parameters cannot be negative!"
+    @assert (size_x>0) && (size_y > 0) && all( [σ,θ,λ,γ] .>= 0) "Parameters cannot be negative!"
     σx = σ
     σy = σ/γ
     nstds = 3
@@ -136,6 +136,22 @@ function (gb::GaborBank)(imgs::Array{<:Real,3})
   return ret
 end
 
+
+function test_bounds(gb::GaborBank)
+  fs=div(gb.frame_size,2)
+  ks= @. div(kernel_size(gb.filters),2)+1
+  locs = vcat(gb.locations...)
+  locs = vcat(collect.(locs)...)
+  if any( (locs .+ maximum(ks)) .> fs)
+    @warn "Frame size might be too small for the filters"
+    return false
+  else
+    return true
+  end
+end
+
+# bank types down here
+
 abstract type BankType end
 
 # surround has 1 orientation only
@@ -171,15 +187,35 @@ function GaborBank(bt::SameSurround,
   return GaborBank(frame_size, filters,locations,out_index)
 end
 
-function test_bounds(gb::GaborBank)
-  fs=div(gb.frame_size,2)
-  ks= @. div(kernel_size(gb.filters),2)+1
-  locs = vcat(gb.locations...)
-  locs = vcat(collect.(locs)...)
-  if any( (locs .+ maximum(ks)) .> fs)
-    @warn "Frame size might be too small for the filters"
-    return false
-  else
-    return true
+
+# surround has 1 orientation only
+struct SameSurroundNicePhase <: BankType
+    ncenter
+    nsurround
+end
+
+function GaborBank(bt::SameSurroundNicePhase,
+        frame_size::Integer,surround_distance::Integer,
+        filter_size::Real,spatial_freq::Real,spatial_phase::Real=0.0)
+  gab_size = Int32(filter_size*6)
+  gab(isreal,θ,y)=OneGabor(isreal,gab_size,filter_size, θ ,
+    spatial_freq, spatial_phase / 180 * pi + y/spatial_freq*(2pi) )
+  filters = OneGabor{Float64}[]
+  locations = Vector{Vector{Tuple{Int32,Int32}}}(undef,0)
+  center_oris = collect(range(0,pi;length=bt.ncenter+1)[1:bt.ncenter])
+  for ori in center_oris
+      push!(filters, gab(true,ori,0.), gab(false,ori,0.))
+      push!(locations,[(0,0),],[(0,0),])
   end
+  surround_locations = get_surround_coordinates(surround_distance,bt.nsurround)
+  for loc in surround_locations
+      y=loc[2]
+      push!(filters, gab(true,0.,y), gab(false,0.,y))
+      push!(locations,[loc,],[loc,])
+  end
+  out_index = map( l-> fill(0,length(l)),locations )
+  for (i,o) in  enumerate(out_index)
+      o[1]=i
+  end
+  return GaborBank(frame_size, filters,locations,out_index)
 end

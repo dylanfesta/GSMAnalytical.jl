@@ -23,17 +23,21 @@ function do_gsm2D(cov,noise,mx)
 end
 
 
+##
+
+bank_test = G.GaborBank(G.SameSurroundNicePhase(4,8), 91,20,5,10)
+bank_test = G.GaborBank(G.SameSurround(4,8), 91,20,5,10)
+bank_view = G.show_bank(bank_test; indexes=[1,(9:2:ndims(bank_test))...])
+heatmap(bank_view;ratio=1,c=:grays)
 
 ##
-mymix = G.RayleighMixer(0.780)
-gsm = do_gsm2D(-0.3,0.2,mymix.alpha)
-gsm_nonoise = do_gsm2D(-0.3,0.0,mymix.alpha)
-x_train = rand(gsm_nonoise,10_000)[3]
-x_noise = rand(MultivariateNormal(gsm.covariance_noise),20_000)
 
-bank_test = G.GaborBank(G.SameSurround(1,4), 121,20,5,4)
-
-G.GSM_Neuron(x_train,x_noise,mymix,bank_test)
+cov_mat = [ 1.0  -0.22  0.2
+            -0.22 1.456  0.11
+             0.2  0.11   0.7778 ]
+cov_noise = [ 0.5  0.01  -0.07
+             0.01  0.4   -0.08
+            -0.07 -0.08  0.234 ]
 
 ##
 #  first test, generate from random 1D gsm, and take a look at x

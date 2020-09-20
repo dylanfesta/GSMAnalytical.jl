@@ -1,5 +1,5 @@
 using GSMAnalytical
-using Statistics
+using Statistics, LinearAlgebra
 using Test
 
 using Random
@@ -94,4 +94,36 @@ end
       noti=deleteat!(collect(1:d),i)
       @test isapprox(mean(xs[noti,i]),0.0;atol=0.2)
     end
+end
+
+@testset "Fit GSM" begin
+  cov_mat = [ 1.0  -0.22  0.2
+             -0.22 1.456  0.11
+              0.2  0.11   0.7778 ]
+  cov_noise = [ 0.5  0.01  -0.07
+                0.01  0.4   -0.08
+               -0.07 -0.08  0.234 ]
+  mx = G.RayleighMixer(1.345)
+  gsm = G.GSM(cov_mat,cov_noise,mx)
+  x_train,x_noise = let all = rand(gsm,15_000)
+    gs = all[2]
+    x_nn = broadcast(*,all[1]',gs)
+    noise = all[3]-x_nn
+    (x_nn,noise)
+  end
+
+  bank_test = G.GaborBank(G.SameSurround(1,2), 121,20,5,4)
+  gsm_train = G.GSM_Neuron(x_train,x_noise,mx,bank_test;test_bank=false).gsm
+  @test all(
+   isapprox.(gsm_train.covariance, gsm.covariance;atol=0.033))
+  @test all(
+    isapprox.(gsm_train.covariance_noise, gsm.covariance_noise;atol=0.033))
+
+  bank_test = G.GaborBank(G.SameSurround(4,10), 121,20,5,4)
+  std_test = 12.34
+  noise_lev = 0.333
+  xs = std_test .* randn(ndims(bank_test),5_000)
+  xs_noise = G.make_noise(10_000,bank_test,noise_lev,xs)
+  @test  isapprox(sqrt(mean(diag(cov(xs;dims=2))))*noise_lev ,
+      sqrt(mean(diag(cov(xs_noise;dims=2)))) ; atol=0.1)
 end
