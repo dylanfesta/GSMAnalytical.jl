@@ -2,16 +2,39 @@ using Pkg
 Pkg.activate(".")
 using GSMAnalytical ; const G = GSMAnalytical
 
-using Random,LinearAlgebra,Statistics,StatsBase
+using Random,LinearAlgebra,Statistics,StatsBase,Distributions
 using Plots
 using QuadGK
 
-function do_gsm(cov,noise,mx)
+function do_gsm1D(cov,noise,mx)
   cov = G.mat1d(cov)
   noise = G.mat1d(noise)
   mx = G.RayleighMixer(mx)
   G.GSM(cov,noise,mx)
 end
+
+function do_gsm2D(cov,noise,mx)
+  Σg = [ 1. cov
+          cov 1.]
+  Σnoise =[ noise 0.
+            0.  noise ]
+  mx = G.RayleighMixer(mx)
+  G.GSM(Σg,Σnoise,mx)
+end
+
+
+
+##
+mymix = G.RayleighMixer(0.780)
+gsm = do_gsm2D(-0.3,0.2,mymix.alpha)
+gsm_nonoise = do_gsm2D(-0.3,0.0,mymix.alpha)
+x_train = rand(gsm_nonoise,10_000)[3]
+x_noise = rand(MultivariateNormal(gsm.covariance_noise),20_000)
+
+bank_test = G.GaborBank(G.SameSurround(1,4), 121,20,5,4)
+
+G.GSM_Neuron(x_train,x_noise,mymix,bank_test)
+
 ##
 #  first test, generate from random 1D gsm, and take a look at x
 
