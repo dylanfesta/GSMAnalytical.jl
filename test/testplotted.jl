@@ -25,11 +25,25 @@ end
 
 ##
 
-bank_test = G.GaborBank(G.SameSurroundNicePhase(4,8), 91,20,5,10)
-bank_test = G.GaborBank(G.SameSurround(4,8), 91,20,5,10)
-bank_view = G.show_bank(bank_test; indexes=[1,(9:2:ndims(bank_test))...])
+bank_test = G.GaborBank(G.SameSurround(1,8), 91,12,5,10)
+bank_view = G.show_bank(bank_test; indexes=[1,(3:2:ndims(bank_test))...])
 heatmap(bank_view;ratio=1,c=:grays)
 
+# train just with noise
+ntrain=10_000
+noise_patches = let n = bank_test.frame_size
+  rand(n,n,ntrain)
+end
+
+gsm_neu = G.GSM_Neuron(noise_patches,0.01,G.RayleighMixer(0.4876),bank_test)
+
+G.mean_std(gsm_neu.gsm.covariance_noise)/G.mean_std(gsm_neu.gsm.covariance)
+
+heatmap(gsm_neu.gsm.covariance; ratio=1)
+heatmap(gsm_neu.gsm.covariance_noise; ratio=1)
+mean(gsm_neu.gsm.covariance ./ gsm_neu.gsm.covariance_noise)
+scatter(gsm_neu.gsm.covariance[:],gsm_neu.gsm.covariance_noise[:]; leg=false  )
+cor(gsm_neu.gsm.covariance[:],gsm_neu.gsm.covariance_noise[:])
 ##
 
 cov_mat = [ 1.0  -0.22  0.2

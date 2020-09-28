@@ -9,7 +9,7 @@ const G = GSMAnalytical
 
 mat1d = G.mat1d
 Random.seed!(0)
-#=
+
 @testset "1D - without noise" begin
     var = 0.1+rand()
     alpha = 0.1+rand()
@@ -63,12 +63,10 @@ end
     @test begin
         f(g1) = G.p_giGx(g1,1,[xfix,],gsm_noise)
         r = quadgk(f,-Inf,Inf)[1]
-        @show r
         isapprox(r,1.0 ; atol=1E-3)
     end
 end
 
-=#
 
 @testset "Gabor banks" begin
     # index max and close to 1 when filter matches the image
@@ -111,7 +109,6 @@ end
     noise = all[3]-x_nn
     (x_nn,noise)
   end
-
   bank_test = G.GaborBank(G.SameSurround(1,2), 121,20,5,4)
   gsm_train = G.GSM_Neuron(x_train,x_noise,mx,bank_test;test_bank=false).gsm
   @test all(
@@ -120,10 +117,23 @@ end
     isapprox.(gsm_train.covariance_noise, gsm.covariance_noise;atol=0.033))
 
   bank_test = G.GaborBank(G.SameSurround(4,10), 121,20,5,4)
-  std_test = 12.34
-  noise_lev = 0.333
-  xs = std_test .* randn(ndims(bank_test),5_000)
-  xs_noise = G.make_noise(10_000,bank_test,noise_lev,xs)
-  @test  isapprox(sqrt(mean(diag(cov(xs;dims=2))))*noise_lev ,
-      sqrt(mean(diag(cov(xs_noise;dims=2)))) ; atol=0.1)
+  xs_noise = G.make_noise(10_000,bank_test)
+  @test isapprox(1., G.mean_std(cov(xs_noise;dims=2)); atol=0.01)
+end
+
+
+@testset "Fit with banks and noise" begin
+    bank_test = G.GaborBank(G.SameSurround(1,8), 91,12,5,10)
+    # train just with noise
+    ntrain=10_000
+    noise_patches = let n = bank_test.frame_size
+      rand(n,n,ntrain)
+    end
+    noiselev = 0.3456
+    gsm_neu = G.GSM_Neuron(noise_patches,noiselev,G.RayleighMixer(0.4876),bank_test)
+    @test isapprox(noiselev,
+        G.mean_std(gsm_neu.gsm.covariance_noise)/G.mean_std(gsm_neu.gsm.covariance);
+        atol=0.01)
+    @test isapprox(1.,cor(gsm_neu.gsm.covariance[:],gsm_neu.gsm.covariance_noise[:]);
+        atol=0.05)
 end
