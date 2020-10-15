@@ -95,5 +95,5 @@ function GSM_Neuron(train_patches::Array{<:Real,3},
   @assert bank.frame_size == size(train_patches,1) == size(train_patches,2) "Error in patch sizes!"
   x_train=bank(train_patches)
   return GSM_Neuron(x_train,noise_level,mixer,bank;
-    train_noise=train_noise)
+    train_noise=train_noise,normalize_noise_cov=true)
 end
