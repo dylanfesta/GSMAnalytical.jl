@@ -10,6 +10,7 @@ using QuadGK
 include("gsm_distributions.jl")
 include("gabor_banks.jl")
 include("fit_gsm.jl")
+include("gsm_additive.jl")
 
 mat1d(x::Real) = let m = Matrix{Float64}(undef,1,1) ; m[1,1] = x ; m ; end
 
