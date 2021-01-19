@@ -22,7 +22,6 @@ function do_gsm2D(cov,noise,mx)
   G.GSM(Σg,Σnoise,mx)
 end
 
-
 ##
 
 bank_test = G.GaborBank(G.SameSurround(1,8), 91,12,5,10)
