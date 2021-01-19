@@ -18,7 +18,7 @@ function  get_surround_coordinates(radius::Integer,nsurr::Integer)
   angs = range(0,2pi;length=nsurr+1)[1:nsurr]
   ivals= @. round(Integer,cos(angs)*radius)
   jvals= @. round(Integer,sin(angs)*radius)
-  collect(zip(ivals,jvals))
+  return collect(zip(ivals,jvals))
 end
 
 
@@ -40,25 +40,26 @@ Returns a 2 Dimensional Complex Gabor kernel contained in a tuple where
 
 N. Petkov and P. Kruizinga, “Computational models of visual neurons specialised in the detection of periodic and aperiodic oriented visual stimuli: bar and grating cells,” Biological Cybernetics, vol. 76, no. 2, pp. 83–96, Feb. 1997. doi.org/10.1007/s004220050323
 """
-function gabor(size_x::Integer, size_y::Integer, σ::Real, θ::Real, λ::Real, γ::Real, ψ::Real)
-    @assert (size_x>0) && (size_y > 0) && all( [σ,θ,λ,γ] .>= 0) "Parameters cannot be negative!"
-    σx = σ
-    σy = σ/γ
-    nstds = 3
-    c = cos(θ)
-    s = sin(θ)
-    xmax = floor(Int64,size_x/2)
-    ymax = floor(Int64,size_y/2)
-    xmin = -xmax
-    ymin = -ymax
-    x = [j for i in xmin:xmax,j in ymin:ymax]
-    y = [i for i in xmin:xmax,j in ymin:ymax]
-    xr = x*c + y*s
-    yr = -x*s + y*c
-    kernel_real = (exp.(-0.5*(((xr.*xr)/σx^2) + ((yr.*yr)/σy^2))).*cos.(2*(π/λ)*xr .+ ψ))
-    kernel_imag = (exp.(-0.5*(((xr.*xr)/σx^2) + ((yr.*yr)/σy^2))).*sin.(2*(π/λ)*xr .+ ψ))
-    kernel = (kernel_real,kernel_imag)
-    return kernel
+function gabor(size_x::Integer,size_y::Integer,σ::Real,θ::Real,λ::Real,γ::Real,ψ::Real)
+  @assert((size_x>0) && (size_y > 0) && all( [σ,θ,λ,γ] .>= 0),
+    "Parameters cannot be negative!")
+  σx = σ
+  σy = σ/γ
+  nstds = 3
+  c = cos(θ)
+  s = sin(θ)
+  xmax = floor(Int64,size_x/2)
+  ymax = floor(Int64,size_y/2)
+  xmin = -xmax
+  ymin = -ymax
+  x = [j for i in xmin:xmax,j in ymin:ymax]
+  y = [i for i in xmin:xmax,j in ymin:ymax]
+  xr = x*c + y*s
+  yr = -x*s + y*c
+  kernel_real = (exp.(-0.5*(((xr.*xr)/σx^2) + ((yr.*yr)/σy^2))).*cos.(2*(π/λ)*xr .+ ψ))
+  kernel_imag = (exp.(-0.5*(((xr.*xr)/σx^2) + ((yr.*yr)/σy^2))).*sin.(2*(π/λ)*xr .+ ψ))
+  kernel = (kernel_real,kernel_imag)
+  return kernel
 end
 
 struct OneGabor{R}
@@ -69,11 +70,11 @@ Base.Broadcast.broadcastable(g::OneGabor) = Ref(g)
 kernel_size(g::OneGabor) = size(g.kernel,1)
 
 function OneGabor(real::Bool,size::Integer,σ::Real, θ::Real, λ::Real, ψ::Real)
-    idx = real ? 1 : 2
-    γ = 1.0
-    θdeg =round(θ*180/pi;digits=1)
-    params = (isreal=real, orientation=θdeg)
-    return OneGabor(gabor(size,size,σ,θ,λ,γ,ψ)[idx], params)
+  idx = real ? 1 : 2
+  γ = 1.0
+  θdeg =round(θ*180/pi;digits=1)
+  params = (isreal=real, orientation=θdeg)
+  return OneGabor(gabor(size,size,σ,θ,λ,γ,ψ)[idx], params)
 end
 
 function position_kernel(kernel::Matrix{<:Real},
@@ -86,26 +87,26 @@ end
 position_kernel(g::OneGabor,siz::Integer,
     x::Integer,y::Integer)=position_kernel(g.kernel,siz,x,y)
 
-struct GaborBank
-    frame_size::Integer
-    filters
-    locations
-    out_index
+struct GaborBank{R}
+  frame_size::Integer
+  filters::Vector{OneGabor{R}}
+  locations
+  out_index
 end
 Base.ndims(gb::GaborBank) = length(vcat(gb.out_index...))
 
 function show_bank(gb::GaborBank ;
         indexes::Union{Nothing,Vector{<:Integer}}=nothing)
-    ret=fill(0.0,(gb.frame_size,gb.frame_size))
-    indexes=something(indexes, collect(1:2:ndims(gb)))
-    for (filt,locs,idxs) in zip(gb.filters,gb.locations,gb.out_index)
-        good_idx = findall(i-> i in indexes, idxs)
-        for i in good_idx
-            pk = position_kernel(filt,gb.frame_size,locs[i]...)
-            ret .+= pk
-        end
+  ret=fill(0.0,(gb.frame_size,gb.frame_size))
+  indexes=something(indexes, collect(1:2:ndims(gb)))
+  for (filt,locs,idxs) in zip(gb.filters,gb.locations,gb.out_index)
+    good_idx = findall(i-> i in indexes, idxs)
+    for i in good_idx
+      pk = position_kernel(filt,gb.frame_size,locs[i]...)
+      ret .+= pk
     end
-    return ret
+  end
+  return ret
 end
 
 function meanprod(mat1::AbstractMatrix{<:Real},mat2::AbstractMatrix{<:Real})
@@ -116,14 +117,14 @@ function meanprod(mat1::AbstractMatrix{<:Real},mat2::AbstractMatrix{<:Real})
     return 2. * ret/sqrt(length(mat1))
 end
 
-function (gb::GaborBank)(img::Matrix{<:Real})
+function (gb::GaborBank{R})(img::Matrix{R}) where R
   sz = size(img,1)
   @assert all( size(img) .== gb.frame_size ) "Wrong frame size!"
   v = gb(reshape(img,sz,sz,1))
   return v[:]
 end
 
-function (gb::GaborBank)(imgs::Array{<:Real,3})
+function (gb::GaborBank{R})(imgs::Array{R,3}) where R
   nimg = size(imgs,3)
   @assert all( size(imgs)[1:2] .== gb.frame_size ) "Wrong frame size!"
   ret=Matrix{Float64}(undef,ndims(gb),nimg)
@@ -156,8 +157,8 @@ abstract type BankType end
 
 # surround has 1 orientation only
 struct SameSurround <: BankType
-    ncenter
-    nsurround
+    ncenter::Integer
+    nsurround::Integer
 end
 
 function GaborBank(bt::SameSurround,

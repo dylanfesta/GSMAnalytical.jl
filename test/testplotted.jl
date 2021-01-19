@@ -10,7 +10,7 @@ function do_gsm1D(cov,noise,mx)
   cov = G.mat1d(cov)
   noise = G.mat1d(noise)
   mx = G.RayleighMixer(mx)
-  G.GSM(cov,noise,mx)
+  return G.GSM(cov,noise,mx)
 end
 
 function do_gsm2D(cov,noise,mx)

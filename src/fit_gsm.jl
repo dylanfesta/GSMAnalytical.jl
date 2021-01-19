@@ -44,19 +44,20 @@ function gsm_fit_factor(mixer::RayleighMixer)
   return inv(2.0mixer.alpha*mixer.alpha)
 end
 
-struct GSM_Neuron
-  gsm::GSM
-  filter_bank::GaborBank
+struct GSM_Neuron{Mx,R}
+  gsm::GSM{Mx,R}
+  filter_bank::GaborBank{R}
 end
 
-function mean_std(covmat)
+function mean_std(covmat::Matrix{<:Real})
   n=size(covmat,1)
   return sqrt(tr(covmat)/n)
 end
 
-function GSM_Neuron(x_train::Matrix{<:Real},x_noise::Matrix{<:Real},
-    mixer::GSMMixer, bank::GaborBank;
-      train_noise::Bool=false,test_bank::Bool=true,normalize_noise_cov::Bool=true)
+function GSM_Neuron(x_train::Matrix{R},x_noise::Matrix{R},
+      mixer::GSMMixer{R}, bank::GaborBank{R};
+      train_noise::Bool=false,test_bank::Bool=true,
+      normalize_noise_cov::Bool=true) where R
   @assert !train_noise "Can only train on noiseless data!"
   Σx = cov(x_train;dims=2)
   nsamples=size(x_train,2)
@@ -69,9 +70,10 @@ function GSM_Neuron(x_train::Matrix{<:Real},x_noise::Matrix{<:Real},
   return GSM_Neuron(gsm,bank)
 end
 
-function GSM_Neuron(x_train::Matrix{<:Real},noise_level::Real,
-    mixer::GSMMixer, bank::GaborBank;
-      train_noise::Bool=false,test_bank::Bool=true,normalize_noise_cov::Bool=true)
+function GSM_Neuron(x_train::Matrix{R},noise_level::Real,
+    mixer::GSMMixer{R}, bank::GaborBank{R};
+    train_noise::Bool=false,test_bank::Bool=true,
+    normalize_noise_cov::Bool=true) where R
   @assert !train_noise "Can only train on noiseless data!"
   Σx = cov(x_train;dims=2)
   nsamples=size(x_train,2)
@@ -89,9 +91,9 @@ function GSM_Neuron(x_train::Matrix{<:Real},noise_level::Real,
   return GSM_Neuron(gsm,bank)
 end
 
-function GSM_Neuron(train_patches::Array{<:Real,3},
-    noise_level::Real,mixer::GSMMixer,
-    bank::GaborBank; train_noise::Bool=false)
+function GSM_Neuron(train_patches::Array{R,3},
+    noise_level::R,mixer::GSMMixer{R},
+    bank::GaborBank{R}; train_noise::Bool=false) where R
   @assert bank.frame_size == size(train_patches,1) == size(train_patches,2) "Error in patch sizes!"
   x_train=bank(train_patches)
   return GSM_Neuron(x_train,noise_level,mixer,bank;

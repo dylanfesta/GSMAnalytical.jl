@@ -40,6 +40,7 @@ Random.seed!(0)
     end
 end
 
+
 @testset "1D model with noise term" begin
     # create random 1D GSM model
     var = 0.1+rand()
@@ -66,7 +67,6 @@ end
         isapprox(r,1.0 ; atol=1E-3)
     end
 end
-
 
 @testset "Gabor banks" begin
     # index max and close to 1 when filter matches the image
@@ -120,7 +120,6 @@ end
   xs_noise = G.make_noise(10_000,bank_test)
   @test isapprox(1., G.mean_std(cov(xs_noise;dims=2)); atol=0.01)
 end
-
 
 @testset "Fit with banks and noise" begin
     bank_test = G.GaborBank(G.SameSurround(1,8), 91,12,5,10)
