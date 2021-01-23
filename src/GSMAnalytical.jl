@@ -7,12 +7,43 @@ using SpecialFunctions
 using Distributions, Random
 using QuadGK
 
+
+# general utility functions
+"""
+    random_covariance_matrix(dims::Integer,diag_val::Real,k_dims::Integer=5;
+        normalize_det::Bool=false)
+
+Returns a random covariance matrix that is positive definite
+and has off-diagonal elements.
+# Arguments
+- `d`: dimensions
+- `diag_val`: scaling of the diagonal
+- `k-dims`: to regulate off-diagonal elements
+- `normalize_det` : the matrix is normalized so that determinant is 1.0
+# output
+- `Σ::Matrix{<:Real}` : a random symmetric, positive definite matrix  
+"""
+function random_covariance_matrix(dims::Integer,diag_val::Real,k_dims::Integer=5;
+    normalize_det::Bool=false)
+  W = randn(dims,k_dims)
+  S = W*W'+ Diagonal(rand(dims))
+  temp_diag = Diagonal(inv.(sqrt.(diag(S))))
+  S = temp_diag * S * temp_diag
+  S .*= diag_val
+  ret = Symmetric(S)
+  if normalize_det
+    _ = normalize_determinant!(ret)
+  end
+  return ret
+end
+mat1d(x::R) where R<:Real = let m = Matrix{R}(undef,1,1) ; m[1,1] = x ; m ; end
+
+
 include("gsm_distributions.jl")
 include("gabor_banks.jl")
 include("fit_gsm.jl")
 include("gsm_additive.jl")
 
-mat1d(x::Real) = let m = Matrix{Float64}(undef,1,1) ; m[1,1] = x ; m ; end
 
 
 
