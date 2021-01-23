@@ -6,10 +6,6 @@ using Test
 using Random,LinearAlgebra,Statistics,StatsBase,Distributions
 using Calculus
 using Plots ; theme(:dark)
-using QuadGK
-
-using Optim
-
 
 function do_gsm1D(cov,noise,mx)
   cov = G.mat1d(cov)
@@ -38,134 +34,8 @@ function plotvs(x::AbstractArray{<:Real},y::AbstractArray{<:Real})
   return plt
 end
 
-function tinydotgrad(x,y,Σ)
-  n=size(Σ,1)
-  ch=cholesky(Σ)
-  L=ch.L
-  fun_grad=function(Lij::Real,i::Integer,j::Integer)
-    Lpre = L[i,j]
-    L[i,j]=Lij
-    iΣnew = inv(L*L')
-    _ret = dot(x,iΣnew,y)
-    L[i,j]=Lpre
-    return _ret
-  end
-  ret = zeros(size(Σ)...)
-  for j in 1:n, i in j:n
-    ret[i,j] = Calculus.gradient( Lij->fun_grad(Lij,i,j),L[i,j])
-  end
-  return ret
-end
 
-
-function tinydotgradprime(x::Vector{R},y::Vector{R},Σ::AbstractMatrix{R}) where R
-  n=size(Σ,1)
-  iΣ=inv(Σ)
-  ch=cholesky(Σ)
-  L=ch.L
-  ret = zeros(size(Σ)...)
-  lf, rg = x'*iΣ, iΣ*y
-  ijgrad=zero(ret)
-  for j in 1:n, i in j:n
-    fill!(ijgrad,0.0)
-    ijgrad[i,:] .= L[:,j]
-    ijgrad[:,i] .+= L[:,j]
-    ret[i,j] = - lf * ijgrad * rg
-  end
-  return ret
-end
-
-function gradient_for_em(x::AbstractArray{<:Real},
-    gsum::G.GSuM{G.NormalMixer{R},R}) where R
-  n=G.n_dims(gsum)
-  ch=cholesky(gsum.covariance)
-  L=ch.L
-  fun_grad=function(Lij::Real,i::Integer,j::Integer)
-    Lpre = L[i,j]
-    L[i,j]=Lij
-    gsum.covariance .= L*L'
-    _ret = G.conditional_expectation_EM_test(x,gsum)
-    L[i,j]=Lpre
-    gsum.covariance .= L*L'
-    return _ret
-  end
-  ret_num = zeros(size(gsum.covariance)...)
-  for j in 1:n, i in j:n
-    ret_num[i,j] = Calculus.gradient( Lij->fun_grad(Lij,i,j),L[i,j])
-  end
-  return ret_num
-end
-
-function grad_stars_single_num(x::AbstractArray{<:Real},
-    gsum::G.GSuM{G.NormalMixer{R},R},dosigma::Bool=true) where R
-  n=G.n_dims(gsum)
-  ch=cholesky(gsum.covariance)
-  L=ch.L
-  fun_grad=function(Lij::Real,i::Integer,j::Integer)
-    Lpre = L[i,j]
-    L[i,j]=Lij
-    gsum.covariance .= L*L'
-    μstar,σstar = G.pars_p_nuGx(x,gsum)
-    _ret = dosigma ? σstar^2 : μstar^2+σstar^2
-    L[i,j]=Lpre
-    gsum.covariance .= L*L'
-    return _ret
-  end
-  ret_num = zeros(size(gsum.covariance)...)
-  for j in 1:n, i in j:n
-    ret_num[i,j] = Calculus.gradient( Lij->fun_grad(Lij,i,j),L[i,j])
-  end
-  return ret_num
-end
-
-function grad_sigmastarsq_ana(x::AbstractArray{<:Real},
-    gsum::G.GSuM{G.NormalMixer{R},R}) where R
-  @assert !G.hasnoise(gsum) "must have no noise"
-  μstar,σstar=G.pars_p_nuGx(x,gsum)
-  Σg = gsum.covariance
-  id=fill(1.0,size(Σg,1))
-  dL = tinydotgradprime(id,id,Σg)
-  dL .*= -σstar^4
-  return dL
-end
-function grad_starsqsums_ana(x::AbstractArray{<:Real},
-    gsum::G.GSuM{G.NormalMixer{R},R}) where R
-  μstar,σstar=G.pars_p_nuGx(x,gsum)
-  dL1 = grad_sigmastarsq_ana(x,gsum)
-  Σg = gsum.covariance
-  id=fill(1.0,size(Σg,1))
-  dL2 = tinydotgradprime(id,x,Σg)
-  return @. 2.0 * (μstar^2/σstar^2 * dL1 + σstar^2*μstar*dL2)+dL1
-end
-
-
-
-function EMfit_test(x::AbstractArray{<:Real},gsum::G.GSuM{G.NormalMixer{R},R}) where R
-  μstar,σstar=G.EMfit_Estep(x,gsum)
-  # analytic
-  grad_an=G.EMfit_Mstep_costprime(μstar,σstar,x,gsum)
-  # numeric
-  Σ=gsum.covariance
-  Σ0=copy(Σ)
-  n=size(Σ,1)
-  L=cholesky(Σ).L
-  μstar,σstar = G.pars_p_nuGx(x,gsum)
-  fun_grad=function(Lij::Real,i::Integer,j::Integer)
-    Lpre = L[i,j]
-    L[i,j]=Lij
-    copy!(Σ,L*L')
-    _ret = G.EMfit_Mstep_cost(μstar,σstar,x,gsum)
-    L[i,j]=Lpre
-    copy!(Σ,Σ0)
-    return _ret
-  end
-  grad_num = zeros(size(Σ)...)
-  for j in 1:n, i in j:n
-    grad_num[i,j] = Calculus.gradient( Lij->fun_grad(Lij,i,j),L[i,j])
-  end
-  return grad_num[:],grad_an[:]
-end
-function EMfit_test_many(xs::AbstractMatrix{<:Real},
+function EMfit_test(xs::AbstractMatrix{<:Real},
     gsum::G.GSuM{G.NormalMixer{R},R}) where R
   μstar,σstar=G.EMfit_Estep(xs,gsum)
   # analytic
@@ -193,50 +63,28 @@ function EMfit_test_many(xs::AbstractMatrix{<:Real},
 end
 
 
-
-function EMFit_Mstep_optim(μstar::Vector{R},σstar::Vector{R},
-    xs::AbstractMatrix{<:Real},gsum::G.GSuM{G.NormalMixer{R},R}) where R
-  Σ=gsum.covariance
-  L=cholesky(Σ).L
-  Lv0 = L[:]
-  costfun = function (Lv::Vector{R})
-    L=reshape(Lv,n,n)
-    copy!(Σ,L*L')
-    return - G.EMfit_Mstep_cost(μstar,σstar,xs,gsum)
-  end
-  gradfun! = function (grad::Vector{R},Lv::Vector{R})
-    L=reshape(Lv,n,n)
-    copy!(Σ,L*L')
-    gradMat= G.EMfit_Mstep_costprime(μstar,σstar,xs,gsum)
-    copy!(grad,.- gradMat[:])
-    return  grad
-  end
-  alg=ConjugateGradient() # BFGS()
-  res=optimize(costfun, gradfun!, Lv0, alg,
-    Optim.Options(show_every=5))
-  Lout=reshape(Optim.minimizer(res),n,n)
-  return Lout*Lout',res
-end
-
 ##
 # make random GSuM
 n=12
 Σg = convert(Matrix{Float64},G.random_covariance_matrix(n,3.))
 Σnoise = zero(Σg)
 mixer=G.NormalMixer(0.44,0.890)
-gsum = G.GSuM(Σg,Σnoise,mixer)
+gsum = G.GSuM(copy(Σg),Σnoise,mixer)
 
 xstry = let n=300,
   (mx,g,x)=G.rand(gsum,n)
   x
 end
 ##
+using BenchmarkTools
+tryx=xstry[:,5]
+tryy=xstry[:,55]
+
 
 μstar,σstar=G.EMfit_Estep(xstry,gsum)
-plotvs(EMfit_test_many(xstry,gsum)...)
-plotvs(EMfit_test(xstry[:,1],gsum)...)
+plotvs(EMfit_test(xstry,gsum)...)
 
-Σfit,result=EMFit_Mstep_optim(μstar,σstar,xstry,gsum)
+Σfit,result=G.EMFit_Mstep_optim(μstar,σstar,xstry,gsum)
 
 plotvs(Σfit,Σg)
 
@@ -254,60 +102,14 @@ xstry = let n=1_000,
   (mx,g,x)=G.rand(gsum,n)
   x
 end
-copy!(gsum.covariance,cov(xstry;dims=2))
-for i in 1:10
-  @show i
-  μstar,σstar=G.EMfit_Estep(xstry,gsum)
-  Σfit,result=EMFit_Mstep_optim(μstar,σstar,xstry,gsum)
-  copy!(Σg,Σfit)
-end
+Σstart=cov(xstry;dims=2)
+copy!(gsum.covariance,Σstart)
 ##
+G.EMFit_somesteps(xstry,gsum;nsteps=10)
+Σfit=gsum.covariance
+
 plotvs(Σfit,Σg0)
-
-
-##
-##
-G.conditional_expectation_EM_prime(xtry,gsum)
-
-gradient_for_em(xtry,gsum)
-
-plotvs(gradient_for_em(xtry,gsum), G.conditional_expectation_EM_prime(xtry,gsum) )
-
-
-
-logdetprime_num(Σg)
-logdetprime(Σg)
-
-plotvs(logdetprime_num(Σg),logdetprime(Σg))
-
-##
-# compare analytic with numberic
-G.conditional_expectation_thingy(xtry,gsum)
-
-# repeat for lots of xs
-G.conditional_expectation_EM(xtry,gsum)
-
-buh=gradient_for_em(xtry,gsum)
-heatmap(buh)
-
-
-Σtry=copy(gsum.covariance)
-xtry=randn(n)
-ytry=randn(n)
-plotvs(tinydotgrad(xtry,ytry,Σtry),tinydotgradprime(xtry,ytry,Σtry))
-tinydotgrad(xtry,ytry,Σtry)
-tinydotgradprime(xtry,ytry,Σtry)
-
-plotvs(tinydotgrad(xtry,ytry,Σtry),tinydotgradprime(xtry,ytry,Σtry))
-
-##
-plotvs(grad_stars_single_num(xtry,gsum),grad_sigmastarsq_ana(xtry,gsum))
-
-grad_stars_single_num(xtry,gsum,false)
-grad_starsqsums_ana(xtry,gsum)
-fill!(xtry,0.0)
-plotvs(grad_stars_single_num(xtry,gsum,false),grad_starsqsums_ana(xtry,gsum))
-
+plotvs(Σfit,Σstart)
 
 
 ##

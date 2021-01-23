@@ -202,23 +202,6 @@ end
 
 
 
-function dotinvmatprodprime(x::AbstractVector{R},
-    Σ::AbstractMatrix{R},y::AbstractVector{R}) where R
-  n=size(Σ,1)
-  iΣ=inv(Σ)
-  ch=cholesky(Σ)
-  L=ch.L
-  ret = zeros(size(Σ)...)
-  lf, rg = x'*iΣ, iΣ*y
-  ijgrad=zero(ret)
-  for j in 1:n, i in j:n
-    fill!(ijgrad,0.0)
-    ijgrad[i,:] .= L[:,j]
-    ijgrad[:,i] .+= L[:,j]
-    ret[i,j] = - lf * ijgrad * rg
-  end
-  return ret
-end
 function sigmastarsqprime(x::AbstractArray{<:Real},
     gsum::GSuM{NormalMixer{R},R}) where R
   @assert !hasnoise(gsum) "must have no noise"
@@ -249,20 +232,6 @@ function mustarprime(x::AbstractArray{<:Real},
   return @. (μstar/σstar^2) * dL1 + σstar^2 * dL2
 end
 
-function logdetprime(Σ::AbstractMatrix{<:Real})
-  L=cholesky(Σ).L
-  iΣ=inv(Σ)
-  n=size(L,1)
-  ret = zeros(size(Σ)...)
-  ijgrad = zero(ret)
-  for j in 1:n, i in j:n
-    fill!(ijgrad,0.0)
-    ijgrad[i,:] .= L[:,j]
-    ijgrad[:,i] .+= L[:,j]
-    ret[i,j] =tr(iΣ*ijgrad)
-  end
-  return ret
-end
 
 
 """
@@ -312,7 +281,6 @@ function conditional_expectation_EM(x::AbstractVector{R},
 end
 
 
-
 function conditional_expectation_EM_prime(x::AbstractVector{R},
     gsum::GSuM{NormalMixer{R},R}) where R
   @assert !hasnoise(gsum) "Case with noise not covered yet!"
@@ -337,85 +305,6 @@ function conditional_expectation_EM_prime(x::AbstractVector{R},
   return dest
 end
 
-function EMfit_Estep(x::AbstractArray{R},
-    gsum::GSuM{NormalMixer{R},R}) where R
-  @assert !hasnoise(gsum) "Case with noise not covered yet!"
-  return pars_p_nuGx(x,gsum)
-end
-
-
-function EMfit_Mstep_cost(μstar::R,σstar::R,x::AbstractVector{R},
-    gsum::GSuM{NormalMixer{R},R}) where R
-  @assert !hasnoise(gsum) "Case with noise not covered yet!"
-  n=n_dims(gsum)
-  icov=inv(gsum.covariance)
-  μmix,σmix=gsum.mixer.μ,gsum.mixer.σ
-  sumstar = μstar^2+σstar^2
-  iv=fill(1.,n_dims(gsum))
-  ret = 0.0
-  ret -= 0.5dot(x,icov,x)
-  ret += μstar*dot(x,icov,iv)
-  ret -=  0.5dot(iv,icov,iv) * sumstar
-  ret -= 0.5*log(det(gsum.covariance))
-  return ret
-end
-function EMfit_Mstep_cost(μstar::Vector{R},σstar::Vector{R},xs::Matrix{R},
-    gsum::GSuM{NormalMixer{R},R}) where R
-  @assert !hasnoise(gsum) "Case with noise not covered yet!"
-  n=n_dims(gsum)
-  icov=inv(gsum.covariance)
-  μmix,σmix=gsum.mixer.μ,gsum.mixer.σ
-  iv=fill(1.,n_dims(gsum))
-  ret = 0.0
-  ndat=size(xs,2)
-  for (nd,x) in enumerate(eachcol(xs))
-    μs,σs=μstar[nd],σstar[nd]
-    sumstar = μs^2+σs^2
-    ret -= 0.5dot(x,icov,x)
-    ret += μs*dot(x,icov,iv)
-    ret -= 0.5dot(iv,icov,iv) * sumstar
-  end
-  ret -= ndat*0.5*log(det(gsum.covariance))
-  return ret
-end
-
-function EMfit_Mstep_costprime(μstar::R,σstar::R,x::AbstractVector{R},
-    gsum::GSuM{NormalMixer{R},R}) where R
-  @assert !hasnoise(gsum) "Case with noise not covered yet!"
-  n=n_dims(gsum)
-  Σ=gsum.covariance
-  iΣ=inv(Σ)
-  μmix,σmix=gsum.mixer.μ,gsum.mixer.σ
-  sumstar = μstar^2+σstar^2
-  iv=fill(1.,n_dims(gsum))
-  dest=zeros(n,n)
-  dest -= 0.5.*dotinvmatprodprime(x,Σ,x)
-  dest .+= μstar.*dotinvmatprodprime(x,Σ,iv)
-  dest .-= 0.5*sumstar.*dotinvmatprodprime(iv,Σ,iv)
-  dest .-=  0.5.*logdetprime(Σ)
-  return dest
-end
-function EMfit_Mstep_costprime(μstar::Vector{R},σstar::Vector{R},
-    xs::Matrix{R},gsum::GSuM{NormalMixer{R},R}) where R
-  @assert !hasnoise(gsum) "Case with noise not covered yet!"
-  n=n_dims(gsum)
-  Σ=gsum.covariance
-  iΣ=inv(Σ)
-  μmix,σmix=gsum.mixer.μ,gsum.mixer.σ
-  iv=fill(1.,n_dims(gsum))
-  dest=zeros(n,n)
-  _primethingy=dotinvmatprodprime(iv,Σ,iv)
-  for (nd,x) in enumerate(eachcol(xs))
-    μs,σs=μstar[nd],σstar[nd]
-    sumstar = μs^2+σs^2
-    dest .-= 0.5.*dotinvmatprodprime(x,Σ,x)
-    dest .+= μs.*dotinvmatprodprime(x,Σ,iv)
-    dest .-= 0.5*sumstar.*_primethingy
-  end
-  ndat=size(xs,2)
-  dest .-= ndat*0.5.*logdetprime(Σ)
-  return dest
-end
 
 
 

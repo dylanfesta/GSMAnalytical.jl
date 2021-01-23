@@ -7,7 +7,7 @@ using SpecialFunctions
 using Distributions, Random
 using QuadGK
 
-
+using Optim
 # general utility functions
 """
     random_covariance_matrix(dims::Integer,diag_val::Real,k_dims::Integer=5;
@@ -21,7 +21,7 @@ and has off-diagonal elements.
 - `k-dims`: to regulate off-diagonal elements
 - `normalize_det` : the matrix is normalized so that determinant is 1.0
 # output
-- `Σ::Matrix{<:Real}` : a random symmetric, positive definite matrix  
+- `Σ::Matrix{<:Real}` : a random symmetric, positive definite matrix
 """
 function random_covariance_matrix(dims::Integer,diag_val::Real,k_dims::Integer=5;
     normalize_det::Bool=false)
@@ -43,6 +43,7 @@ include("gsm_distributions.jl")
 include("gabor_banks.jl")
 include("fit_gsm.jl")
 include("gsm_additive.jl")
+include("fitEM_gsum.jl")
 
 
 
