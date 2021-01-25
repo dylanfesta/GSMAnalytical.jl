@@ -129,9 +129,20 @@ end
 function distr_p_x(gsum::GSuM{NormalMixer{R},R}) where R
   n=n_dims(gsum)
   muu = fill(gsum.mixer.μ,n)
-  S = broadcast(+,gsum.mixer.σ^2, gsum.covariance_matrix, gsum.covariance_matrix_noise)
+  S = broadcast(+,gsum.mixer.σ^2, gsum.covariance, gsum.covariance_noise)
   return MultivariateNormal(muu,S)
 end
+
+
+function meanlog_px(xs::Matrix{R},gsum::GSuM{NormalMixer{R},R}) where R
+  l=0.0
+  d=distr_p_x(gsum)
+  for x in eachcol(xs)
+    l+= logpdf(d,x)
+  end
+  return l/size(xs,2)
+end
+
 
 function distr_p_xi(i::Integer,gsum::GSuM{NormalMixer{R},R}) where R
   n=n_dims(gsum)

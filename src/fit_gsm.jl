@@ -15,9 +15,16 @@ function make_noise(nsamples::Integer,gb::GaborBank)
 end
 
 
-function gsm_fit_factor(mixer::RayleighMixer)
+function gsm_fit_factor(mixer::RayleighMixer{R}) where R
   return inv(2.0mixer.alpha*mixer.alpha)
 end
+
+function gsm_momentmatch_given_noise(xs::Matrix{R},Σnoise::Matrix{R},
+    mixer::RayleighMixer{R}) where R
+  Σx = cov(xs;dims=2)
+  Σg = rmul!(Σx, gsm_fit_factor(mixer))
+  return GSM(Σg,Σnoise,mixer)
+ end
 
 struct GSM_Neuron{Mx,R}
   gsm::GSM{Mx,R}
@@ -34,13 +41,10 @@ function GSM_Neuron(x_train::Matrix{R},x_noise::Matrix{R},
       train_noise::Bool=false,test_bank::Bool=true,
       normalize_noise_cov::Bool=true) where R
   @assert !train_noise "Can only train on noiseless data!"
-  Σx = cov(x_train;dims=2)
-  nsamples=size(x_train,2)
   Σnoise = cov(x_noise;dims=2)
-  Σg = rmul!(Σx, gsm_fit_factor(mixer))
-  gsm = GSM(Σg,Σnoise,mixer)
+  gsm = gsm_momentmatch_given_noise(x_train,Σnoise,mixer)
   if test_bank
-    @assert ndims(bank) == size(Σg,1) "Filter bank has the wrong dimensionality!"
+    @assert ndims(bank) == size(gsm.covariance,1) "Filter bank has the wrong dimensionality!"
   end
   return GSM_Neuron(gsm,bank)
 end
