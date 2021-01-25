@@ -119,15 +119,15 @@ end
 
 function (gb::GaborBank{R})(img::Matrix{R}) where R
   sz = size(img,1)
-  @assert all( size(img) .== gb.frame_size ) "Wrong frame size!"
+  @assert all(size(img) .== gb.frame_size ) "Wrong frame size!"
   v = gb(reshape(img,sz,sz,1))
   return v[:]
 end
 
 function (gb::GaborBank{R})(imgs::Array{R,3}) where R
   nimg = size(imgs,3)
-  @assert all( size(imgs)[1:2] .== gb.frame_size ) "Wrong frame size!"
-  ret=Matrix{Float64}(undef,ndims(gb),nimg)
+  @assert all(size(imgs)[1:2] .== gb.frame_size ) "Wrong frame size!"
+  ret=Matrix{R}(undef,ndims(gb),nimg)
   for (filt,locs,idxs) in zip(gb.filters,gb.locations,gb.out_index)
     for (loc,idx) in zip(locs,idxs)
       pk = position_kernel(filt,gb.frame_size,loc[1],loc[2])

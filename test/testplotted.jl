@@ -65,51 +65,6 @@ end
 
 ##
 # make random GSuM
-n=12
-Σg = convert(Matrix{Float64},G.random_covariance_matrix(n,3.))
-Σnoise = zero(Σg)
-mixer=G.NormalMixer(0.44,0.890)
-gsum = G.GSuM(copy(Σg),Σnoise,mixer)
-
-xstry = let n=300,
-  (mx,g,x)=G.rand(gsum,n)
-  x
-end
-##
-using BenchmarkTools
-tryx=xstry[:,5]
-tryy=xstry[:,55]
-
-
-μstar,σstar=G.EMfit_Estep(xstry,gsum)
-plotvs(EMfit_test(xstry,gsum)...)
-
-Σfit,result=G.EMFit_Mstep_optim(μstar,σstar,xstry,gsum)
-
-plotvs(Σfit,Σg)
-
-##
-# make random GSuM
-n=10
-Σg = convert(Matrix{Float64},G.random_covariance_matrix(n,3.))
-Σg0=copy(Σg)
-Σg2 = convert(Matrix{Float64},G.random_covariance_matrix(n,3.))
-Σnoise = zero(Σg)
-mixer=G.NormalMixer(0.44,0.890)
-gsum = G.GSuM(Σg,Σnoise,mixer)
-
-xstry = let n=1_000,
-  (mx,g,x)=G.rand(gsum,n)
-  x
-end
-Σstart=cov(xstry;dims=2)
-copy!(gsum.covariance,Σstart)
-##
-G.EMFit_somesteps(xstry,gsum;nsteps=10)
-Σfit=gsum.covariance
-
-plotvs(Σfit,Σg0)
-plotvs(Σfit,Σstart)
 
 
 ##

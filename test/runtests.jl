@@ -3,18 +3,46 @@ using Statistics, LinearAlgebra
 using Test
 
 using Random
-using QuadGK
+using QuadGK,Calculus
 
 const G = GSMAnalytical
 
 mat1d = G.mat1d
 Random.seed!(0)
 
+
+function EMfit_test(xs::AbstractMatrix{<:Real},
+    gsum::G.GSuM{G.NormalMixer{R},R}) where R
+  μstar,σstar=G.EMfit_Estep(xs,gsum)
+  # analytic
+  grad_an=G.EMfit_Mstep_costprime(μstar,σstar,xs,gsum)
+  # numeric
+  Σ=gsum.covariance
+  Σ0=copy(Σ)
+  n=size(Σ,1)
+  L=cholesky(Σ).L
+  μstar,σstar = G.pars_p_nuGx(xs,gsum)
+  fun_grad=function(Lij::Real,i::Integer,j::Integer)
+    Lpre = L[i,j]
+    L[i,j]=Lij
+    copy!(Σ,L*L')
+    _ret = G.EMfit_Mstep_cost(μstar,σstar,xs,gsum)
+    L[i,j]=Lpre
+    copy!(Σ,Σ0)
+    return _ret
+  end
+  grad_num = zeros(size(Σ)...)
+  for j in 1:n, i in j:n
+    grad_num[i,j] = Calculus.gradient( Lij->fun_grad(Lij,i,j),L[i,j])
+  end
+  return grad_num[:],grad_an[:]
+end
+
 @testset "1D - without noise" begin
     var = 0.1+rand()
     alpha = 0.1+rand()
     noise = 0.1+rand()
-    gsm = G.GSM( mat1d(var) , mat1d(0) , G.RayleighMixer(alpha))
+    gsm = G.GSM( mat1d(var) , mat1d(0.0) , G.RayleighMixer(alpha))
     # test p(x) 1D integrates to 1
     @test begin
         f(x) = G.p_x([x,],gsm)
@@ -135,4 +163,38 @@ end
         atol=0.01)
     @test isapprox(1.,cor(gsm_neu.gsm.covariance[:],gsm_neu.gsm.covariance_noise[:]);
         atol=0.05)
+end
+
+
+
+@testset "Fit additive GSM (GSuM) with EM" begin
+    n=8
+    Σg = convert(Matrix{Float64},G.random_covariance_matrix(n,3.))
+    Σnoise = zero(Σg)
+    mixer=G.NormalMixer(0.44,0.890)
+    gsum = G.GSuM(copy(Σg),Σnoise,mixer)
+    xstry = let n=300
+      G.rand(gsum,n)[3]
+    end
+    grad_num,grad_an=EMfit_test(xstry,gsum)
+    @test all(isapprox.(grad_num,grad_an;atol=0.001))
+    μstar,σstar = G.EMfit_Estep(xstry,gsum)
+    Σfit,result=G.EMFit_Mstep_optim(μstar,σstar,xstry,gsum)
+    @test all(isapprox.(Σfit,Σg;atol=0.66))
+    ##
+    n=4
+    Σg = convert(Matrix{Float64},G.random_covariance_matrix(n,3.))
+    Σtrue = copy(Σg)
+    Σnoise = zero(Σg)
+    mixer=G.NormalMixer(0.44,0.890)
+    gsum = G.GSuM(Σg,Σnoise,mixer)
+    xstry = let n=1_000
+      G.rand(gsum,n)[3]
+    end
+    Σstart=cov(xstry;dims=2)
+    copy!(gsum.covariance,Σstart)
+    G.EMFit_somesteps(xstry,gsum;nsteps=10,verbose=false)
+    Σfit=gsum.covariance
+    msqerr(x,y)=mean( @. (x-y)^2 )
+    @test msqerr(Σfit,Σtrue) <  10*msqerr(Σstart,Σtrue)
 end
