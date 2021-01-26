@@ -161,7 +161,7 @@ end
 function pars_p_nuGx(xs::AbstractMatrix{R},gsum::GSuM{NormalMixer{R},R}) where R
   iσ_sq = inv(gsum.mixer.σ^2)
   Ssum_inv = inv(gsum.covariance+gsum.covariance_noise)
-  σstar_sq = inv( iσ_sq + sum( Ssum_inv) )
+  σstar_sq = max(eps(100.),inv( iσ_sq + sum(Ssum_inv)))
   μstar = map(eachcol(xs)) do x
     σstar_sq * (sum(Ssum_inv*x) + gsum.mixer.μ * iσ_sq)
   end

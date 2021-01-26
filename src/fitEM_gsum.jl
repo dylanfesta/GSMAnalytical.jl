@@ -71,24 +71,24 @@ function EMfit_Mstep_cost(μstar::Vector{R},σstar::Vector{R},xs::Matrix{R},
     ret += μs*dot(x,icov,iv)
     ret -= 0.5dot(iv,icov,iv) * sumstar
   end
-  ret -= ndat*0.5*log(det(gsum.covariance))
+  detcov = max(eps(),det(gsum.covariance))
+  ret -= ndat*0.5*log(detcov)
   return ret
 end
 
 """
   EMfit_Mstep_costprime(μstar::Vector{R},σstar::Vector{R},
-      xs::Matrix{R},gsum::GSuM{NormalMixer{R},R}) where R
+      xs::Matrix{R},gsum::GSuM{NormalMixer{R},R},L::Matrix{R}) where R
 
 Gradient of cost for the M step
 """
 function EMfit_Mstep_costprime(μstar::Vector{R},σstar::Vector{R},
-    xs::Matrix{R},gsum::GSuM{NormalMixer{R},R}) where R
+    xs::Matrix{R},gsum::GSuM{NormalMixer{R},R},L::Matrix{R}) where R
   @assert !hasnoise(gsum) "Case with noise not covered yet!"
   n=n_dims(gsum)
   Σ=gsum.covariance
   iΣ=inv(Σ)
-  L=cholesky(Σ).L
-  μmix,σmix=gsum.mixer.μ,gsum.mixer.σ
+  μmi   x,σmix=gsum.mixer.μ,gsum.mixer.σ
   iv=fill(1.,n_dims(gsum))
   dest=zeros(n,n)
   _primethingy=dotinvmatprodprime(iv,iv,iΣ,L)
@@ -102,13 +102,6 @@ function EMfit_Mstep_costprime(μstar::Vector{R},σstar::Vector{R},
   ndat=size(xs,2)
   dest .-= ndat*0.5.*logdetprime(Σ)
   return dest
-end
-
-function EMfit_Mstep_costandcostprime!(grad::Vector{R},μstar::Vector{R},σstar::Vector{R},
-    xs::Matrix{R},gsum::GSuM{NormalMixer{R},R}) where R
-
-
-  return cost
 end
 
 
@@ -131,7 +124,7 @@ function EMFit_Mstep_optim(μstar::Vector{R},σstar::Vector{R},
   gradfun! = function (grad::Vector{R},Lv::Vector{R})
     L=reshape(Lv,n,n)
     copy!(Σ,L*L')
-    gradMat= EMfit_Mstep_costprime(μstar,σstar,xs,gsum)
+    gradMat= EMfit_Mstep_costprime(μstar,σstar,xs,gsum,L)
     copy!(grad,.- gradMat[:])
     return  grad
   end
