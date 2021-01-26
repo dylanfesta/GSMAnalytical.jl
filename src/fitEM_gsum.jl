@@ -23,8 +23,12 @@ end
 function logdetprime(Σ::AbstractMatrix{<:Real})
   L=cholesky(Σ).L
   iΣ=inv(Σ)
+  return logdetprimeiSL(iΣ,L)
+end
+
+function logdetprimeiSL(iΣ::AbstractMatrix{R},L::AbstractMatrix{R}) where R
   n=size(L,1)
-  ret = zeros(size(Σ)...)
+  ret = zeros(size(iΣ)...)
   ijgrad = zero(ret)
   for j in 1:n, i in j:n
     fill!(ijgrad,0.0)
@@ -100,7 +104,7 @@ function EMfit_Mstep_costprime(μstar::Vector{R},σstar::Vector{R},
     dest .-= 0.5*sumstar.*_primethingy
   end
   ndat=size(xs,2)
-  dest .-= ndat*0.5.*logdetprime(Σ)
+  dest .-= ndat*0.5.*logdetprimeiSL(iΣ,L)
   return dest
 end
 
@@ -113,8 +117,13 @@ end
 function EMFit_Mstep_optim(μstar::Vector{R},σstar::Vector{R},
     xs::AbstractMatrix{<:Real},gsum::GSuM{NormalMixer{R},R}) where R
   Σ=gsum.covariance
+  n=size(Σ,1)
+  if !isposdef(Σ)
+    for i in 1:n
+      Σ[i,i] += eps(100.)
+    end
+  end 
   L=cholesky(Σ).L
-  n=size(L,1)
   Lv0 = L[:]
   costfun = function (Lv::Vector{R})
     L=reshape(Lv,n,n)
