@@ -83,12 +83,12 @@ end
 Gradient of cost for the M step
 """
 function EMfit_Mstep_costprime(μstar::Vector{R},σstar::Vector{R},
-    xs::Matrix{R},gsum::GSuM{NormalMixer{R},R},L::Matrix{R}) where R
+    xs::Matrix{R},gsum::GSuM{NormalMixer{R},R},L::AbstractMatrix{R}) where R
   @assert !hasnoise(gsum) "Case with noise not covered yet!"
   n=n_dims(gsum)
   Σ=gsum.covariance
   iΣ=inv(Σ)
-  μmi   x,σmix=gsum.mixer.μ,gsum.mixer.σ
+  μmix,σmix=gsum.mixer.μ,gsum.mixer.σ
   iv=fill(1.,n_dims(gsum))
   dest=zeros(n,n)
   _primethingy=dotinvmatprodprime(iv,iv,iΣ,L)

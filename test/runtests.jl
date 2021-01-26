@@ -14,13 +14,13 @@ Random.seed!(0)
 function EMfit_test(xs::AbstractMatrix{<:Real},
     gsum::G.GSuM{G.NormalMixer{R},R}) where R
   μstar,σstar=G.EMfit_Estep(xs,gsum)
-  # analytic
-  grad_an=G.EMfit_Mstep_costprime(μstar,σstar,xs,gsum)
-  # numeric
   Σ=gsum.covariance
   Σ0=copy(Σ)
   n=size(Σ,1)
   L=cholesky(Σ).L
+  # analytic
+  grad_an=G.EMfit_Mstep_costprime(μstar,σstar,xs,gsum,L)
+  # numeric
   μstar,σstar = G.pars_p_nuGx(xs,gsum)
   fun_grad=function(Lij::Real,i::Integer,j::Integer)
     Lpre = L[i,j]
