@@ -65,53 +65,37 @@ end
 
 
 ##  fit GSM data, and cross validate
-n=4
-Σg = convert(Matrix{Float64},G.random_covariance_matrix(n,3.))
+n=5
+Σg = convert(Matrix{Float64},G.random_covariance_matrix(n,0.001))
 Σnoise = zero(Σg)
-mx = G.RayleighMixer(1.345)
-gsm_true = G.GSM(Σg,Σnoise,mx)
-nsampl = 1_000
-mix_train,_,x_train =rand(gsm_true,nsampl)
-x_test =rand(gsm_true,nsampl)[3]
-
-gsm_fit = G.gsm_momentmatch_given_noise(x_train,
-  copy(Σnoise),G.RayleighMixer(mean(mix_train)))
-gsum_fit = let σ=std(mix_train), mx=G.NormalMixer(0.0,σ),
-  Σstart = cov(x_train;dims=2)
-  ret=G.GSuM(Σstart,zero(Σstart),mx)
-  G.EMFit_somesteps(x_train,ret;nsteps=30,verbose=false)
-  ret
-end
-lp_gsum = G.meanlog_px(x_test,gsum_fit)
-lp_gsm = G.meanlog_px(x_test,gsm_fit)
-@test lp_gsm > lp_gsum
-
-##  Fit GSUM data, and cross-validate
-
-n=4
-Σg = convert(Matrix{Float64},G.random_covariance_matrix(n,3.))
-Σnoise = zero(Σg)
-mx = G.NormalMixer(0.01,1.2)
+mx = G.NormalMixer(0.0,1.0)
 gsum_true = G.GSuM(Σg,Σnoise,mx)
 
-nsampl = 1_000
+nsampl = 10_000
 mix_train,_,x_train =rand(gsum_true,nsampl)
 x_test =rand(gsum_true,nsampl)[3]
 
-mx=G.RayleighMixer(mean(mix_train))
-gsm_fit = G.gsm_momentmatch_given_noise(x_train,copy(Σnoise),mx)
-gsum_fit = let σ=std(mix_train), mx=G.NormalMixer(mean(mix_train),var(mix_train)),
+gsum_fit = let  mxbad = G.NormalMixer(0.0,4.0)   #σ=std(mix_train), mx=G.NormalMixer(mean(mix_train),var(mix_train)),
   Σstart = cov(x_train;dims=2)
   ret=G.GSuM(Σstart,zero(Σstart),mx)
-  G.EMFit_somesteps(x_train,ret;nsteps=30,verbose=false)
+  G.EMFit_somesteps(x_train,ret;nsteps=60,verbose=true)
   ret
 end
-lp_gsum = G.meanlog_px(x_test,gsum_fit)
-lp_gsm = G.meanlog_px(x_test,gsm_fit)
 
-@test lp_gsum > lp_gsm
+gsum_fit = let (μ,σ)=mean_and_std(mix_train),
+  mx=G.NormalMixer(μ,σ),
+  Σstart = cov(x_train;dims=2)
+  ret=G.GSuM(Σstart,zero(Σstart),mx)
+  G.EMFit_somesteps(x_train,ret;nsteps=60,verbose=true)
+  ret
+end
 
+plotvs(gsum_fit.covariance,gsum_true.covariance)
 
+gsum_fit.covariance
+gsum_true.covariance
+
+std(mean(x_train;dims=1))
 
 ##
 
