@@ -119,7 +119,7 @@ function EMFit_Mstep_optim(μstar::Vector{R},σstar::Vector{R},
   Σ=gsum.covariance
   n=size(Σ,1)
   if !isposdef(Σ)
-    @warn 'Σ not positive definite. Adding a small diagonal'
+    @warn "Σ not positive definite. Adding a small diagonal"
     for i in 1:n
       Σ[i,i] += eps(1000.)
     end
