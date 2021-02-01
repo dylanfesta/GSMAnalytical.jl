@@ -122,7 +122,7 @@ function EMFit_Mstep_optim(μstar::Vector{R},σstar::Vector{R},
     for i in 1:n
       Σ[i,i] += eps(100.)
     end
-  end 
+  end
   L=cholesky(Σ).L
   Lv0 = L[:]
   costfun = function (Lv::Vector{R})
@@ -137,7 +137,8 @@ function EMFit_Mstep_optim(μstar::Vector{R},σstar::Vector{R},
     copy!(grad,.- gradMat[:])
     return  grad
   end
-  alg=ConjugateGradient() # BFGS()
+  #alg=ConjugateGradient() # BFGS()
+  alg=BFGS()
   res=optimize(costfun, gradfun!, Lv0, alg,
     Optim.Options(show_every=5))
   Lout=reshape(Optim.minimizer(res),n,n)
