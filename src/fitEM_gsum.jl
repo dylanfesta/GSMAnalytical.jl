@@ -141,7 +141,7 @@ function EMFit_Mstep_optim(μstar::Vector{R},σstar::Vector{R},
   #alg=ConjugateGradient() # BFGS()
   alg=BFGS()
   res=optimize(costfun, gradfun!, Lv0, alg,
-    Optim.Options(show_every=5))
+    Optim.Options(iterations=100))
   Lout=reshape(Optim.minimizer(res),n,n)
   return Lout*Lout',res
 end
