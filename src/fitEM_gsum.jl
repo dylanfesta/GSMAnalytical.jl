@@ -170,13 +170,21 @@ function EMFit_somesteps(xs::AbstractMatrix{<:Real},
       serialize(nam,(Sigmafit=Σfit, negloglik= Optim.minimum(result)))
       println("step $i of $nsteps done")
     end
+    dostep=true
     if !isposdef(Σfit)
       ee=minimum(real.(eigvals(Σfit)))
-      @error("matrix not positive def ... why? Fixing it\n"*
+      @error("matrix not positive def ... why?\n"*
         "smaller eigenvalue is $ee")
-      Σfit = Σfit - 3*ee*I
+      #Σfit = Σfit + abs(3*ee)*I
+      dostep=false
     end
-    copy!(gsum.covariance,Σfit)
+    if any(abs.(Σfit) .> 50.)
+      @error "values too high! Skipping this step!"
+      dostep=false
+    end
+    if dostep
+      copy!(gsum.covariance,Σfit)
+    end
   end
   return nothing
 end
