@@ -74,15 +74,16 @@ nsampl = 5_000
 mix_train,_,x_train =rand(gsum_true,nsampl)
 x_test =rand(gsum_true,nsampl)[3]
 
-gsum_fit = let  σ=std(mix_train), mx=G.NormalMixer(mean(mix_train),var(mix_train)),
+Lend,trace = let  σ=std(mix_train), mx=G.NormalMixer(mean(mix_train),var(mix_train)),
   mydir=joinpath(@__DIR__,"ciao")
-  mkdir(mydir)
+  # mkdir(mydir)
   #mxbad = G.NormalMixer(0.0,4.0)
   Σstart = cov(x_train;dims=2)
   ret=G.GSuM(Σstart,zero(Σstart),mx)
-  G.EMFit_somesteps(x_train,ret;nsteps=50,debug=true,debug_dir=mydir)
-  ret
+  Lend,trace=G.EMFit_somesteps(x_train,ret;nsteps=10,debug=true,debug_dir=mydir)
 end
+
+plot(trace;leg=false)
 
 gsum_fit = let (μ,σ)=mean_and_std(mix_train),
   mx=G.NormalMixer(μ,σ),
@@ -132,3 +133,21 @@ costtest = deserialize(testnam)
 
 
 readdir(mydir)
+
+##
+iΣ=inv(Σg)
+myL=cholesky(Σg).L
+iL=inv(myL)
+
+Σg*(iL'*iL)
+
+det(Σg)
+det(myL)^2
+
+iΣ - (iL'*iL)
+
+LowerTriangular(rand(10,10))[3,4]
+
+plotvs(G.pars_p_nuGx(x_train,gsum_true)[1],
+  G.pars_p_nuGx_nonoise(x_train,gsum_true.mixer.μ,gsum_true.mixer.σ,
+  cholesky(gsum_true.covariance).L)[1])

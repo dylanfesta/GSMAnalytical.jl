@@ -10,28 +10,22 @@ const G = GSMAnalytical
 mat1d = G.mat1d
 Random.seed!(0)
 
-
-function EMfit_test(xs::AbstractMatrix{<:Real},
-    gsum::G.GSuM{G.NormalMixer{R},R}) where R
-  μstar,σstar=G.EMfit_Estep(xs,gsum)
-  Σ=gsum.covariance
-  Σ0=copy(Σ)
-  n=size(Σ,1)
-  L=cholesky(Σ).L
+function EMfit_test(xs::AbstractMatrix{<:Real},μmix::R,σmix::R,
+    L::LowerTriangular{R}) where R
+  μstar,σstar=G.EMfit_Estep(xs,μmix,σmix,L)
+  n=size(L,1)
   # analytic
-  grad_an=G.EMfit_Mstep_costprime(μstar,σstar,xs,gsum,L)
+  grad_an=G.EMfit_Mstep_costprime(μstar,σstar,xs,μmix,σmix,L)
   # numeric
-  μstar,σstar = G.pars_p_nuGx(xs,gsum)
+  μstar,σstar = G.pars_p_nuGx_nonoise(xs,μmix,σmix,L)
   fun_grad=function(Lij::Real,i::Integer,j::Integer)
     Lpre = L[i,j]
     L[i,j]=Lij
-    copy!(Σ,L*L')
-    _ret = G.EMfit_Mstep_cost(μstar,σstar,xs,gsum)
+    _ret = G.EMfit_Mstep_cost(μstar,σstar,xs,μmix,σmix,L)
     L[i,j]=Lpre
-    copy!(Σ,Σ0)
     return _ret
   end
-  grad_num = zeros(size(Σ)...)
+  grad_num = zeros(size(L)...)
   for j in 1:n, i in j:n
     grad_num[i,j] = Calculus.gradient( Lij->fun_grad(Lij,i,j),L[i,j])
   end
@@ -166,20 +160,23 @@ end
 end
 
 
-
 @testset "Fit additive GSM (GSuM) with EM" begin
     n=8
     Σg = convert(Matrix{Float64},G.random_covariance_matrix(n,3.))
     Σnoise = zero(Σg)
-    mixer=G.NormalMixer(0.44,0.890)
+    μmix=0.44
+    σmix=0.89
+    L=cholesky(Σg).L
+    mixer=G.NormalMixer(μmix,σmix)
     gsum = G.GSuM(copy(Σg),Σnoise,mixer)
     xstry = let n=300
       G.rand(gsum,n)[3]
     end
-    grad_num,grad_an=EMfit_test(xstry,gsum)
+    grad_num,grad_an=EMfit_test(xstry,μmix,σmix,L)
     @test all(isapprox.(grad_num,grad_an;atol=0.001))
-    μstar,σstar = G.EMfit_Estep(xstry,gsum)
-    Σfit,result=G.EMFit_Mstep_optim(μstar,σstar,xstry,gsum)
+    μstar,σstar = G.EMfit_Estep(xstry,μmix,σmix,L)
+    Lfit,result=G.EMFit_Mstep_optim(μstar,σstar,xstry,μmix,σmix,L)
+    Σfit=Lfit*Lfit'
     @test all(isapprox.(Σfit,Σg;atol=0.66))
     ##
     n=4
@@ -193,11 +190,12 @@ end
     end
     Σstart=cov(xstry;dims=2)
     copy!(gsum.covariance,Σstart)
-    G.EMFit_somesteps(xstry,gsum;nsteps=10,verbose=false)
-    Σfit=gsum.covariance
+    Ltrain,trace=G.EMFit_somesteps(xstry,gsum;nsteps=10,debug=false)
+    Σfit=Ltrain*Ltrain'
     msqerr(x,y)=mean( @. (x-y)^2 )
     @test msqerr(Σfit,Σtrue) <  10*msqerr(Σstart,Σtrue)
 end
+
 
 @testset "Cross-validation GSM (true) vs additive GSM" begin
     n=4
@@ -214,7 +212,8 @@ end
     gsum_fit = let σ=std(mix_train), mx=G.NormalMixer(0.0,σ),
       Σstart = cov(x_train;dims=2)
       ret=G.GSuM(Σstart,zero(Σstart),mx)
-      G.EMFit_somesteps(x_train,ret;nsteps=30,verbose=false)
+      Llearn,_=G.EMFit_somesteps(x_train,ret;nsteps=30,debug=false)
+      copy!(ret.covariance,Llearn*Llearn')
       ret
     end
     lp_gsum = G.meanlog_px(x_test,gsum_fit)
@@ -236,7 +235,8 @@ end
     gsum_fit = let σ=std(mix_train), mx=G.NormalMixer(mean(mix_train),var(mix_train)),
       Σstart = cov(x_train;dims=2)
       ret=G.GSuM(Σstart,zero(Σstart),mx)
-      G.EMFit_somesteps(x_train,ret;nsteps=30,verbose=false)
+      Llearn,_=G.EMFit_somesteps(x_train,ret;nsteps=30,debug=false)
+      copy!(ret.covariance,Llearn*Llearn')
       ret
     end
     lp_gsum = G.meanlog_px(x_test,gsum_fit)

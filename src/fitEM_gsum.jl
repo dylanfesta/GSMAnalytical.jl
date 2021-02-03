@@ -54,6 +54,18 @@ end
 
 
 """
+  EMfit_Estep(x::AbstractArray{R},
+      gsum::GSuM{NormalMixer{R},R}) where R
+
+Single E step, finds the mean and variance of the mixer, given the previous parameters
+"""
+function EMfit_Estep(x::AbstractArray{R},μmix::R,σmix::R,
+    L::LowerTriangular{R}) where R
+  return pars_p_nuGx_nonoise(x,μmix,σmix,L)
+end
+
+
+"""
   EMfit_Mstep_cost(μstar::Vector{R},σstar::Vector{R},xs::Matrix{R},
       gsum::GSuM{NormalMixer{R},R}) where R
 
@@ -79,6 +91,33 @@ function EMfit_Mstep_cost(μstar::Vector{R},σstar::Vector{R},xs::Matrix{R},
   ret -= ndat*0.5*log(detcov)
   return ret
 end
+
+"""
+  EMfit_Mstep_cost(μstar::Vector{R},σstar::Vector{R},
+      xs::Matrix{R},μmix::Real,σmix::Real,L::AbstractMatrix{R}) where R
+
+Cost for M step, given the vectorized results of the E step
+"""
+function EMfit_Mstep_cost(μstar::Vector{R},σstar::Vector{R},
+    xs::Matrix{R},μmix::Real,σmix::Real,L::AbstractMatrix{R}) where R
+  n=size(L,1)
+  iL=inv(L)
+  iΣ=(iL'*iL)
+  iv=fill(1.,n)
+  ret = 0.0
+  ndat=size(xs,2)
+  for (nd,x) in enumerate(eachcol(xs))
+    μs,σs=μstar[nd],σstar[nd]
+    sumstar = μs^2+σs^2
+    ret -= 0.5dot(x,iΣ,x)
+    ret += μs*dot(x,iΣ,iv)
+    ret -= 0.5dot(iv,iΣ,iv) * sumstar
+  end
+  detcov = max(eps(100.0),det(L)^2)
+  ret -= ndat*0.5*log(detcov)
+  return ret
+end
+
 
 """
   EMfit_Mstep_costprime(μstar::Vector{R},σstar::Vector{R},
@@ -108,6 +147,32 @@ function EMfit_Mstep_costprime(μstar::Vector{R},σstar::Vector{R},
   return dest
 end
 
+"""
+    EMfit_Mstep_costprime(μstar::Vector{R},σstar::Vector{R},
+        xs::Matrix{R},μmix::Real,σmix::Real,L::AbstractMatrix{R}) where R
+
+Gradient of cost for the M step
+"""
+function EMfit_Mstep_costprime(μstar::Vector{R},σstar::Vector{R},
+    xs::Matrix{R},μmix::Real,σmix::Real,L::AbstractMatrix{R}) where R
+  n=size(L,1)
+  iL=inv(L)
+  iΣ=(iL'*iL)
+  iv=fill(1.,n)
+  dest=zeros(n,n)
+  _primethingy=dotinvmatprodprime(iv,iv,iΣ,L)
+  for (nd,x) in enumerate(eachcol(xs))
+    μs,σs=μstar[nd],σstar[nd]
+    sumstar = μs^2+σs^2
+    dest .-= 0.5.*dotinvmatprodprime(x,x,iΣ,L)
+    dest .+= μs.*dotinvmatprodprime(x,iv,iΣ,L)
+    dest .-= 0.5*sumstar.*_primethingy
+  end
+  ndat=size(xs,2)
+  dest .-= ndat*0.5.*logdetprimeiSL(iΣ,L)
+  return dest
+end
+
 
 """
   EMFit_Mstep_optim(μstar::Vector{R},σstar::Vector{R},
@@ -115,35 +180,25 @@ end
 
 """
 function EMFit_Mstep_optim(μstar::Vector{R},σstar::Vector{R},
-    xs::AbstractMatrix{<:Real},gsum::GSuM{NormalMixer{R},R}) where R
-  Σ=gsum.covariance
-  n=size(Σ,1)
-  if !isposdef(Σ)
-    @warn "Σ not positive definite. Adding a small diagonal"
-    for i in 1:n
-      Σ[i,i] += 1E-4
-    end
-  end
-  L=cholesky(Σ).L
+    xs::AbstractMatrix{R},μmix::R,σmix::R,L::AbstractMatrix{R}) where R
+  n=size(L,1)
   Lv0 = L[:]
   costfun = function (Lv::Vector{R})
-    L=reshape(Lv,n,n)
-    copy!(Σ,L*L')
-    return - EMfit_Mstep_cost(μstar,σstar,xs,gsum)
+    L=LowerTriangular(reshape(Lv,n,n))
+    return - EMfit_Mstep_cost(μstar,σstar,xs,μmix,σmix,L)
   end
   gradfun! = function (grad::Vector{R},Lv::Vector{R})
-    L=reshape(Lv,n,n)
-    copy!(Σ,L*L')
-    gradMat= EMfit_Mstep_costprime(μstar,σstar,xs,gsum,L)
+    L=LowerTriangular(reshape(Lv,n,n))
+    gradMat= EMfit_Mstep_costprime(μstar,σstar,xs,μmix,σmix,L)
     copy!(grad,.- gradMat[:])
     return  grad
   end
   #alg=ConjugateGradient() # BFGS()
   alg=LBFGS()
   res=optimize(costfun, gradfun!, Lv0, alg,
-    Optim.Options(iterations=100,time_limit=5.0))
-  Lout=reshape(Optim.minimizer(res),n,n)
-  return Lout*Lout',res
+    Optim.Options(iterations=200,time_limit=30.0))
+  Lout=LowerTriangular(reshape(Optim.minimizer(res),n,n))
+  return Lout,res
 end
 
 
@@ -158,33 +213,31 @@ should be stored in `gsum`
 function EMFit_somesteps(xs::AbstractMatrix{<:Real},
     gsum::GSuM{NormalMixer{R},R};nsteps::Integer=10,
     debug::Bool=true,debug_dir::Union{String,Nothing}=nothing) where R
+
+  μmix,σmix = gsum.mixer.μ,gsum.mixer.σ
   if (debug && isnothing(debug_dir))
     test_dir=abspath(@__DIR__,"..","test")
     debug_dir=mktempdir(test_dir;cleanup=true,prefix="emfit_debug")
   end
+  Lcurrent = cholesky(gsum.covariance).L # just the initial conditions
+  loglik_trace=zeros(nsteps)
   for i in 1:nsteps
-    μstar,σstar=EMfit_Estep(xs,gsum)
-    Σfit,result=EMFit_Mstep_optim(μstar,σstar,xs,gsum)
+    μstar,σstar=EMfit_Estep(xs,μmix,σmix,Lcurrent)
+    Lfit,result=EMFit_Mstep_optim(μstar,σstar,xs,μmix,σmix,Lcurrent)
+    loglik_trace[i] = Optim.minimum(result)
     if debug
       nam =joinpath(debug_dir,lpad(i,5,"0") *".jls")
-      serialize(nam,(Sigmafit=Σfit, negloglik= Optim.minimum(result)))
+      serialize(nam,(Lfit=Lfit, negloglik= Optim.minimum(result)))
       println("step $i of $nsteps done")
     end
     dostep=true
-    if !isposdef(Σfit)
-      ee=minimum(real.(eigvals(Σfit)))
-      @error("matrix not positive def ... why?\n"*
-        "smaller eigenvalue is $ee")
-      #Σfit = Σfit + abs(3*ee)*I
-      dostep=false
-    end
-    if any(abs.(Σfit) .> 50.)
+    if any(abs.(Lfit) .> 50.)
       @error "values too high! Skipping this step!"
       dostep=false
     end
     if dostep
-      copy!(gsum.covariance,Σfit)
+      copy!(Lcurrent,Lfit)
     end
   end
-  return nothing
+  return Lcurrent, loglik_trace
 end

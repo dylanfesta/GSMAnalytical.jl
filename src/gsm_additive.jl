@@ -169,6 +169,20 @@ function pars_p_nuGx(xs::AbstractMatrix{R},gsum::GSuM{NormalMixer{R},R}) where R
   return μstar,σstar
 end
 
+function pars_p_nuGx_nonoise(xs::AbstractMatrix{R},
+    μmix::R,σmix::R,L::LowerTriangular{R}) where R
+  iσ_sq = inv(σmix^2)
+  iL=inv(L)
+  Ssum_inv = (iL'*iL)
+  σstar_sq = max(eps(100.),inv( iσ_sq + sum(Ssum_inv)))
+  μstar = map(eachcol(xs)) do x
+    σstar_sq * (sum(Ssum_inv*x) + μmix * iσ_sq)
+  end
+  σstar  = fill(sqrt(σstar_sq),length(μstar))
+  return μstar,σstar
+end
+
+
 function distr_p_mixGx(x::AbstractVector{R},gsum::GSuM{NormalMixer{R},R}) where R
   μstar,σstar=pars_p_nuGx(x,gsum)
   return Normal(μstar,σstar)
