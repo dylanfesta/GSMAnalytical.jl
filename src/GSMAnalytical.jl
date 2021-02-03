@@ -8,6 +8,7 @@ using Distributions, Random
 using QuadGK
 
 using Optim
+using Serialization
 # general utility functions
 """
     random_covariance_matrix(dims::Integer,diag_val::Real,k_dims::Integer=5;

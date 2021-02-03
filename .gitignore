@@ -9,3 +9,4 @@ test/Manifest.toml
 /docs/site/
 /tmpdata/
 .directory
+*.jls

@@ -139,7 +139,7 @@ function EMFit_Mstep_optim(μstar::Vector{R},σstar::Vector{R},
     return  grad
   end
   #alg=ConjugateGradient() # BFGS()
-  alg=BFGS()
+  alg=LBFGS()
   res=optimize(costfun, gradfun!, Lv0, alg,
     Optim.Options(iterations=100,time_limit=5.0))
   Lout=reshape(Optim.minimizer(res),n,n)
@@ -156,17 +156,24 @@ for the covariance matrix of the features. The mixer parameters and the initial 
 should be stored in `gsum`
 """
 function EMFit_somesteps(xs::AbstractMatrix{<:Real},
-    gsum::GSuM{NormalMixer{R},R};nsteps::Integer=10,verbose::Bool=true) where R
+    gsum::GSuM{NormalMixer{R},R};nsteps::Integer=10,
+    debug::Bool=true,debug_dir::Union{String,Nothing}=nothing) where R
+  if (debug && isnothing(debug_dir))
+    test_dir=abspath(@__DIR__,"..","test")
+    debug_dir=mktempdir(test_dir;cleanup=true,prefix="emfit_debug")
+  end
   for i in 1:nsteps
-    if verbose
-      println("step $i of $nsteps")
-    end
     μstar,σstar=EMfit_Estep(xs,gsum)
     Σfit,result=EMFit_Mstep_optim(μstar,σstar,xs,gsum)
+    if debug
+      nam =joinpath(debug_dir,lpad(i,5,"0") *".jls")
+      serialize(nam,(Sigmafit=Σfit, negloglik= Optim.minimum(result)))
+      println("step $i of $nsteps done")
+    end
     if !isposdef(Σfit)
-      @error "matrix not positive def ... why? Fixing it"
       ee=minimum(real.(eigvals(Σfit)))
-      @info "smaller eigenvalue is $ee"
+      @error("matrix not positive def ... why? Fixing it\n"*
+        "smaller eigenvalue is $ee")
       Σfit = Σfit - 3*ee*I
     end
     copy!(gsum.covariance,Σfit)
