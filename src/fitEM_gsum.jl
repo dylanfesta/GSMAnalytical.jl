@@ -121,7 +121,7 @@ function EMFit_Mstep_optim(μstar::Vector{R},σstar::Vector{R},
   if !isposdef(Σ)
     @warn "Σ not positive definite. Adding a small diagonal"
     for i in 1:n
-      Σ[i,i] += eps(1000.)
+      Σ[i,i] += 1E-4
     end
   end
   L=cholesky(Σ).L
@@ -141,7 +141,7 @@ function EMFit_Mstep_optim(μstar::Vector{R},σstar::Vector{R},
   #alg=ConjugateGradient() # BFGS()
   alg=BFGS()
   res=optimize(costfun, gradfun!, Lv0, alg,
-    Optim.Options(iterations=100))
+    Optim.Options(iterations=100,time_limit=5.0))
   Lout=reshape(Optim.minimizer(res),n,n)
   return Lout*Lout',res
 end
@@ -163,6 +163,12 @@ function EMFit_somesteps(xs::AbstractMatrix{<:Real},
     end
     μstar,σstar=EMfit_Estep(xs,gsum)
     Σfit,result=EMFit_Mstep_optim(μstar,σstar,xs,gsum)
+    if !isposdef(Σfit)
+      @error "matrix not positive def ... why? Fixing it"
+      ee=minimum(real.(eigvals(Σfit)))
+      @info "smaller eigenvalue is $ee"
+      Σfit = Σfit - 3*ee*I
+    end
     copy!(gsum.covariance,Σfit)
   end
   return nothing
